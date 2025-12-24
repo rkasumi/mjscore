@@ -9,6 +9,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.get("/session", async (_req, res) => {
   try {
     const envelope = await readEnvelope();

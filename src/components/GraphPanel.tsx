@@ -72,9 +72,9 @@ export const GraphPanel = ({ players, aggregate }: Props) => {
   const isEmpty = !aggregate || aggregate.handsCount === 0;
 
   return (
-    <div className="card p-6">
+    <div className="card p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="section-title">成績グラフ</h2>
+        <h2 className="section-title text-2xl sm:text-3xl">成績グラフ</h2>
         <div className="flex gap-2 rounded-2xl bg-slate-100 p-1 text-xs">
           <button
             type="button"

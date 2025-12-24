@@ -21,7 +21,7 @@ body {
 }
 
 .card {
-  @apply rounded-3xl border border-slate-200/80 bg-white/80 shadow-soft;
+  @apply w-full rounded-3xl border border-slate-200/80 bg-white/80 shadow-soft;
 }
 
 .section-title {

@@ -49,7 +49,7 @@ export const ScoreTable = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
@@ -182,7 +182,7 @@ export const ScoreTable = () => {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white/80">
-          <table className="w-full min-w-[520px] text-xs">
+          <table className="w-full min-w-[360px] text-xs md:min-w-[520px]">
             <thead>
               <tr className="bg-slate-100 text-left text-slate-500">
                 <th className="px-3 py-2 text-center">符/翻</th>

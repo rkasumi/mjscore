@@ -41,9 +41,9 @@ const buildOrderedSeats = (players: Player[], hand: Hand): OrderedSeat[] => {
 
 export const HandHistory = ({ players, hands, onEdit, onDelete }: Props) => {
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="section-title">半荘ごと</h2>
+    <div className="card p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-title text-2xl sm:text-3xl">半荘ごと</h2>
         <span className="text-xs text-slate-500">{hands.length} 半荘</span>
       </div>
       <div className="mt-4">
@@ -51,7 +51,7 @@ export const HandHistory = ({ players, hands, onEdit, onDelete }: Props) => {
           <p className="text-sm text-slate-500">まだ半荘が登録されていません。</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse text-sm">
+            <table className="w-full min-w-[360px] border-collapse text-sm md:min-w-[620px]">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                   <th className="py-2 pr-3">半荘</th>

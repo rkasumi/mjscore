@@ -13,11 +13,16 @@ export interface SessionSync {
 
 export class HttpPollingSessionSync implements SessionSync {
   private lastEnvelope: SessionEnvelope | null = null;
+  private fetchImpl: typeof fetch;
 
   constructor(
     private baseUrl: string,
-    private fetchImpl: typeof fetch = fetch,
-  ) {}
+    fetchImpl: typeof fetch = fetch,
+  ) {
+    const target = typeof window !== "undefined" && fetchImpl === fetch ? window.fetch : fetchImpl;
+    // Bind to avoid "Illegal invocation" errors in some browsers when fetch is called unbound.
+    this.fetchImpl = target.bind(typeof window !== "undefined" ? window : globalThis);
+  }
 
   getLastEnvelope(): SessionEnvelope | null {
     return this.lastEnvelope;

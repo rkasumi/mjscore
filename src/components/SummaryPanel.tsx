@@ -66,16 +66,16 @@ export const SummaryPanel = ({ aggregate, session }: Props) => {
   }, [session]);
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="section-title">トータル成績</h2>
+    <div className="card p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-title text-2xl sm:text-3xl">トータル成績</h2>
         <span className="text-xs text-slate-500">半荘数 {aggregate?.handsCount ?? 0}</span>
       </div>
       {!aggregate || aggregate.players.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">プレイヤーが登録されていません。</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[420px] border-collapse text-sm">
+          <table className="w-full min-w-[320px] border-collapse text-sm md:min-w-[420px]">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                 <th className="py-2 pr-3">順位</th>
