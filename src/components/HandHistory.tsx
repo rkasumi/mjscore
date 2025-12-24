@@ -1,5 +1,4 @@
 import type { Hand, Player } from "../../shared/types";
-
 import { calculateHandResults } from "../lib/scoring";
 
 const formatScore = (score: number): string => `${score.toLocaleString()}点`;

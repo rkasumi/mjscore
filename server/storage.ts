@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import type { Session } from "../shared/types";
+import type { Session } from "../shared/types.js";
 
 export type SessionEnvelope = {
   version: number;

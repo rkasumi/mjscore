@@ -6,11 +6,13 @@ import { HandForm } from "./components/HandForm";
 import { HandHistory } from "./components/HandHistory";
 import { PlayerManager } from "./components/PlayerManager";
 import { ReverseCondition } from "./components/ReverseCondition";
+import { ScoreTable } from "./components/ScoreTable";
 import { SessionControls } from "./components/SessionControls";
 import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
 import { buildSessionAggregate } from "./lib/aggregation";
 import { createId } from "./lib/id";
+import { calculateBaseOnlyConditions } from "./lib/reversal";
 import { useSessionStore } from "./lib/useSessionStore";
 
 const FIXED_NAMES = ["プレイヤー1", "プレイヤー2"] as const;
@@ -56,9 +58,9 @@ const canRemovePlayer = (session: Session, playerId: string): boolean =>
 const App = () => {
   const { session, saveSession, syncState, lastError, meta } = useSessionStore();
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
-  const [activePanel, setActivePanel] = useState<"controls" | "handInput" | "reverse" | null>(
-    null,
-  );
+  const [activePanel, setActivePanel] = useState<
+    "controls" | "handInput" | "reverse" | "scoreTable" | null
+  >(null);
 
   const normalizedSession = useMemo(
     () => (session ? ensureFixedPlayers(session) : null),
@@ -70,6 +72,50 @@ const App = () => {
     () => (normalizedSession ? buildSessionAggregate(normalizedSession) : null),
     [normalizedSession],
   );
+  const defaultSeatIds = useMemo(() => {
+    if (!normalizedSession) {
+      return [];
+    }
+    const lastHand = normalizedSession.hands[normalizedSession.hands.length - 1];
+    if (lastHand?.seats.length === 4) {
+      return lastHand.seats.map((seat) => seat.playerId);
+    }
+    return normalizedSession.players.slice(0, 4).map((player) => player.id);
+  }, [normalizedSession]);
+  const [seatPlayerIds, setSeatPlayerIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!normalizedSession) {
+      setSeatPlayerIds([]);
+      return;
+    }
+    setSeatPlayerIds((prev) => {
+      const validIds = new Set(normalizedSession.players.map((player) => player.id));
+      const filtered = prev.filter((id) => validIds.has(id));
+      if (filtered.length === 4) {
+        return filtered;
+      }
+      return defaultSeatIds;
+    });
+  }, [defaultSeatIds, normalizedSession]);
+
+  const handleToggleSeat = (playerId: string) => {
+    setSeatPlayerIds((prev) => {
+      if (prev.includes(playerId)) {
+        return prev.filter((id) => id !== playerId);
+      }
+      if (prev.length >= 4) {
+        return prev;
+      }
+      return [...prev, playerId];
+    });
+  };
+  const baseOnlyConditions = useMemo(() => {
+    if (!normalizedSession || seatPlayerIds.length !== 4) {
+      return [];
+    }
+    return calculateBaseOnlyConditions(normalizedSession, seatPlayerIds);
+  }, [normalizedSession, seatPlayerIds]);
 
   // normalizedSession computed above for consistent usage
   useEffect(() => {
@@ -232,6 +278,19 @@ const App = () => {
             >
               逆転条件
             </button>
+            <button
+              type="button"
+              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                activePanel === "scoreTable"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+              onClick={() =>
+                setActivePanel((prev) => (prev === "scoreTable" ? null : "scoreTable"))
+              }
+            >
+              点数表
+            </button>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <button
@@ -258,7 +317,7 @@ const App = () => {
             onClick={() => setActivePanel(null)}
             aria-label="close overlay"
           />
-          <div className="absolute inset-x-0 bottom-16 mx-auto w-full max-w-5xl px-4 md:px-10">
+          <div className="absolute inset-x-0 top-16 mx-auto w-full max-w-5xl px-4 md:px-10">
             <div className="card max-h-[75vh] overflow-auto p-0">
               <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur md:px-6">
                 <div className="flex items-center justify-between">
@@ -267,6 +326,8 @@ const App = () => {
                       ? "卓管理"
                       : activePanel === "handInput"
                         ? "半荘入力"
+                        : activePanel === "scoreTable"
+                          ? "点数表"
                         : "逆転条件"}
                   </h3>
                   <button
@@ -278,7 +339,7 @@ const App = () => {
                   </button>
                 </div>
               </div>
-              <div className="space-y-5 px-5 py-4 md:px-6 md:py-5">
+              <div className="space-y-5 bg-white px-5 py-4 md:px-6 md:py-5">
                 {activePanel === "controls" ? (
                   <>
                     {normalizedSession ? (
@@ -321,8 +382,15 @@ const App = () => {
                   )
                 ) : null}
                 {activePanel === "reverse" ? (
-                  <ReverseCondition note="計算ロジックはlibに追加予定です。" />
+                  <ReverseCondition
+                    players={normalizedSession?.players ?? []}
+                    seatPlayerIds={seatPlayerIds}
+                    onToggleSeat={handleToggleSeat}
+                    baseOnlyConditions={baseOnlyConditions}
+                    note="同点パターンの列挙は未対応です。"
+                  />
                 ) : null}
+                {activePanel === "scoreTable" ? <ScoreTable /> : null}
               </div>
             </div>
           </div>

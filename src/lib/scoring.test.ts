@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { calculateHandResults } from "./scoring";
 
 const seat = (playerId: string, score: number) => ({ playerId, score });

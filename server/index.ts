@@ -1,8 +1,8 @@
 import express from "express";
 import cors from "cors";
 
-import type { Session } from "../shared/types";
-import { readEnvelope, writeEnvelope } from "./storage";
+import type { Session } from "../shared/types.js";
+import { readEnvelope, writeEnvelope } from "./storage.js";
 
 const app = express();
 

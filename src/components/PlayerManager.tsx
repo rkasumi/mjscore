@@ -38,12 +38,8 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
   const canAddExtra = players.length < 6 && extraName.trim().length > 0;
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="section-title">プレイヤー管理</h2>
-        <span className="text-xs text-slate-400">最大6人</span>
-      </div>
-      <div className="mt-4 space-y-3">
+    <div className="space-y-4">
+      <div className="space-y-3">
         {slots.map((slot, index) => {
           const player = players[index];
           const isFixed = index < 2;
@@ -149,9 +145,9 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
           );
         })}
       </div>
-      <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <input
-          className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"
+          className="flex-1 rounded-2xl border border-slate-200 bg-white/80 px-4 py-2 text-sm"
           placeholder="追加プレイヤー（5人目以降）"
           value={extraName}
           onChange={(event) => setExtraName(event.target.value)}

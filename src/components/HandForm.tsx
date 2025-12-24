@@ -94,23 +94,21 @@ export const HandForm = ({ players, editingHand, onSave, onCancelEdit }: Props) 
   };
 
   return (
-    <div className="card p-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="section-title">半荘入力</h2>
         <span className="text-xs text-slate-400">空欄は抜け番</span>
       </div>
-      <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
         {seats.map((seat) => (
           <div key={seat.playerId} className="grid gap-3 md:grid-cols-[1fr_160px]">
-            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm">
               {seat.name}
             </div>
-            <div className="flex items-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-sm">
+            <div className="flex items-center overflow-hidden rounded-2xl border border-slate-200 bg-white/80 text-sm">
               <input
                 type="number"
                 step={1}
                 className="w-full bg-transparent px-3 py-2 outline-none"
-                placeholder="点数 (100点単位)"
                 value={seat.score}
                 onChange={(event) => handleScoreChange(seat.playerId, event.target.value)}
               />
