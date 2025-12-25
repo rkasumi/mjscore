@@ -39,25 +39,6 @@ sudo mkdir -p /path/to/private
 sudo chown 1000:1000 /path/to/private
 ```
 
-Set up environment variables:
-
-- The repo includes `env.example` only; do not commit secrets.
-- Production secrets live at `/path/to/private`.
-- Recommended: symlink `/path/to/private` to the secrets file (or copy the same contents).
-
-```sh
-sudo mkdir -p /path/to/private
-# put real secrets into /path/to/private
-sudo ln -s /path/to/private /path/to/private
-```
-
-Example values (see `env.example`):
-
-```sh
-PORT=8080
-DATA_DIR=/data
-```
-
 Initial start (build + run):
 
 ```sh
