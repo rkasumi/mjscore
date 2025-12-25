@@ -18,18 +18,18 @@ sudo rsync -a --delete dist/ /path/to/web-root
 
 ### 2) Prepare the API container (Podman)
 
-On the server, place the repository at `/path/to/private`:
+On the server, clone the repository to `/path/to/private`:
 
 ```sh
 sudo mkdir -p /path/to/private
-sudo rsync -a --delete ./ /path/to/private
+sudo git clone <REPO_URL> /path/to/private
 ```
 
-If you prefer `scp` with a minimal file set:
+For updates later:
 
 ```sh
-scp -r Containerfile compose.yml package.json pnpm-lock.yaml tsconfig.json server/tsconfig.json \
-  server shared deploy/nginx/mjscore.conf USER@HOST:/path/to/private
+cd /path/to/private
+sudo git pull
 ```
 
 Create the data directory for persistence (optional but recommended):
@@ -39,30 +39,44 @@ sudo mkdir -p /path/to/private
 sudo chown 1000:1000 /path/to/private
 ```
 
-Create `/path/to/private` for secrets and runtime config:
+Set up environment variables:
+
+- The repo includes `env.example` only; do not commit secrets.
+- Production secrets live at `/path/to/private`.
+- Recommended: symlink `/path/to/private` to the secrets file (or copy the same contents).
+
+```sh
+sudo mkdir -p /path/to/private
+# put real secrets into /path/to/private
+sudo ln -s /path/to/private /path/to/private
+```
+
+Example values (see `env.example`):
 
 ```sh
 PORT=8080
 DATA_DIR=/data
 ```
 
-Build the API image:
+Initial start (build + run):
 
 ```sh
 cd /path/to/private
-podman build -t mjscore-api:latest -f Containerfile .
+podman-compose up -d --build
 ```
 
-Start the API with Podman compose:
+For updates (pull + rebuild + restart):
 
 ```sh
-podman compose up -d
+cd /path/to/private
+git pull
+podman-compose up -d --build
 ```
 
 Stop it when needed:
 
 ```sh
-podman compose down
+podman-compose down
 ```
 
 ### 3) nginx configuration (SPA + /api proxy)
