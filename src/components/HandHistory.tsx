@@ -13,6 +13,7 @@ type Props = {
   hands: Hand[];
   onEdit: (handId: string) => void;
   onDelete: (handId: string) => void;
+  readOnly?: boolean;
 };
 
 type OrderedSeat = {
@@ -39,35 +40,54 @@ const buildOrderedSeats = (players: Player[], hand: Hand): OrderedSeat[] => {
     .sort((a, b) => a.rank - b.rank);
 };
 
-export const HandHistory = ({ players, hands, onEdit, onDelete }: Props) => {
+export const HandHistory = ({ players, hands, onEdit, onDelete, readOnly = false }: Props) => {
+  const showControls = !readOnly;
+  const visibleHands = readOnly ? hands.slice(-2).reverse() : hands;
+  const title = readOnly ? "直近半荘" : "半荘ごと";
+  const countLabel = readOnly
+    ? `直近${visibleHands.length} 半荘`
+    : `${hands.length} 半荘`;
+  const tableTextClass = readOnly ? "text-base" : "text-sm";
+  const headerTextClass = readOnly ? "text-sm" : "text-xs";
+  const contentMarginClass = readOnly ? "mt-3" : "mt-4";
   return (
     <div className="card p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="section-title text-2xl sm:text-3xl">半荘ごと</h2>
-        <span className="text-xs text-slate-500">{hands.length} 半荘</span>
+        <h2 className={`section-title ${readOnly ? "text-3xl md:text-4xl" : "text-2xl sm:text-3xl"}`}>
+          {title}
+        </h2>
+        <span className={`${readOnly ? "text-sm" : "text-xs"} text-slate-500`}>{countLabel}</span>
       </div>
-      <div className="mt-4">
-        {hands.length === 0 ? (
-          <p className="text-sm text-slate-500">まだ半荘が登録されていません。</p>
+      <div className={contentMarginClass}>
+        {visibleHands.length === 0 ? (
+          <p className={`${tableTextClass} text-slate-500`}>
+            まだ半荘が登録されていません。
+          </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[360px] border-collapse text-sm md:min-w-[620px]">
+            <table
+              className={`w-full border-collapse ${tableTextClass} ${
+                readOnly ? "min-w-0" : "min-w-[360px] md:min-w-[620px]"
+              }`}
+            >
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
+                <tr className={`border-b border-slate-200 text-left ${headerTextClass} text-slate-500`}>
                   <th className="py-2 pr-3">半荘</th>
                   <th className="py-2 pr-3">1位</th>
                   <th className="py-2 pr-3">2位</th>
                   <th className="py-2 pr-3">3位</th>
                   <th className="py-2 pr-3">4位</th>
-                  <th className="py-2">操作</th>
+                  {showControls ? <th className="py-2">操作</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {hands.map((hand, index) => {
+                {visibleHands.map((hand, index) => {
                   const ordered = buildOrderedSeats(players, hand);
                   return (
                     <tr key={hand.id} className="border-b border-slate-100">
-                      <td className="py-2 pr-3 text-slate-500">{index + 1}</td>
+                      <td className="py-2 pr-3 text-slate-500">
+                        {readOnly ? hands.length - index : index + 1}
+                      </td>
                       {ordered.map((seat) => (
                         <td key={`${hand.id}-${seat.rank}`} className="py-2 pr-3">
                           <div className="text-slate-900">{seat.name}</div>
@@ -76,29 +96,31 @@ export const HandHistory = ({ players, hands, onEdit, onDelete }: Props) => {
                           </div>
                         </td>
                       ))}
-                      <td className="py-2">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-200"
-                            onClick={() => onEdit(hand.id)}
-                          >
-                            編集
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-200"
-                            onClick={() => {
-                              const confirmed = window.confirm("この半荘履歴を削除しますか？");
-                              if (confirmed) {
-                                onDelete(hand.id);
-                              }
-                            }}
-                          >
-                            削除
-                          </button>
-                        </div>
-                      </td>
+                      {showControls ? (
+                        <td className="py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-200"
+                              onClick={() => onEdit(hand.id)}
+                            >
+                              編集
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-200"
+                              onClick={() => {
+                                const confirmed = window.confirm("この半荘履歴を削除しますか？");
+                                if (confirmed) {
+                                  onDelete(hand.id);
+                                }
+                              }}
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}

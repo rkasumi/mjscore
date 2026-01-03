@@ -61,6 +61,13 @@ const App = () => {
   const [activePanel, setActivePanel] = useState<
     "controls" | "handInput" | "reverse" | "scoreTable" | null
   >(null);
+  const displayMode = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get("display") ?? params.get("mode") ?? "";
+    return value === "1" || value.toLowerCase() === "true" || value === "display";
+  }, []);
+  const inviteUrl = import.meta.env.VITE_INVITE_URL ?? "";
+  const inviteImageSrc = "/invite.png";
 
   const normalizedSession = useMemo(
     () => (session ? ensureFixedPlayers(session) : null),
@@ -83,6 +90,7 @@ const App = () => {
     return normalizedSession.players.slice(0, 4).map((player) => player.id);
   }, [normalizedSession]);
   const [seatPlayerIds, setSeatPlayerIds] = useState<string[]>([]);
+  const [handSeatIds, setHandSeatIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!normalizedSession) {
@@ -98,9 +106,40 @@ const App = () => {
       return defaultSeatIds;
     });
   }, [defaultSeatIds, normalizedSession]);
+  useEffect(() => {
+    if (!normalizedSession) {
+      setHandSeatIds([]);
+      return;
+    }
+    setHandSeatIds((prev) => {
+      const validIds = new Set(normalizedSession.players.map((player) => player.id));
+      const filtered = prev.filter((id) => validIds.has(id));
+      if (filtered.length === 4) {
+        return filtered;
+      }
+      return defaultSeatIds;
+    });
+  }, [defaultSeatIds, normalizedSession]);
+
+  useEffect(() => {
+    if (editingHand?.seats.length === 4) {
+      setHandSeatIds(editingHand.seats.map((seat) => seat.playerId));
+    }
+  }, [editingHand]);
 
   const handleToggleSeat = (playerId: string) => {
     setSeatPlayerIds((prev) => {
+      if (prev.includes(playerId)) {
+        return prev.filter((id) => id !== playerId);
+      }
+      if (prev.length >= 4) {
+        return prev;
+      }
+      return [...prev, playerId];
+    });
+  };
+  const handleToggleHandSeat = (playerId: string) => {
+    setHandSeatIds((prev) => {
       if (prev.includes(playerId)) {
         return prev.filter((id) => id !== playerId);
       }
@@ -215,15 +254,42 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen px-4 pb-32 pt-10 text-slate-900 md:px-10">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <header className="space-y-4">
-          <div>
-            <h1 className="font-display text-3xl md:text-4xl">麻雀スコア管理</h1>
-          </div>
-          <div className="glow-divider h-px w-full" />
-          <SyncStatus syncState={syncState} lastError={lastError} meta={meta} />
+    <div
+      className={`text-slate-900 ${
+        displayMode ? "h-screen overflow-hidden px-6 py-6" : "min-h-screen px-4 pb-32 pt-10 md:px-10"
+      }`}
+    >
+      <div
+        className={`mx-auto flex max-w-6xl flex-col ${
+          displayMode ? "h-full gap-4" : "gap-6"
+        }`}
+      >
+        <header className={displayMode ? "space-y-2" : "space-y-4"}>
+          {!displayMode ? (
+            <div>
+              <h1 className="font-display text-3xl md:text-4xl">麻雀スコア管理</h1>
+            </div>
+          ) : null}
+          {!displayMode ? <div className="glow-divider h-px w-full" /> : null}
+          <SyncStatus
+            syncState={syncState}
+            lastError={lastError}
+            meta={meta}
+            displayMode={displayMode}
+          />
         </header>
+        {displayMode ? (
+          <div className="pointer-events-none fixed right-4 top-4 z-40">
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 shadow-sm">
+              {inviteUrl ? <div className="text-right text-xs text-slate-500">{inviteUrl}</div> : null}
+              <img
+                src={inviteImageSrc}
+                alt="参加者アクセスQR"
+                className="h-20 w-20 rounded-md border border-slate-200 bg-white"
+              />
+            </div>
+          </div>
+        ) : null}
 
         {!normalizedSession ? (
           <div className="card p-6 text-sm text-slate-400">
@@ -231,9 +297,13 @@ const App = () => {
           </div>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <GraphPanel players={normalizedSession?.players ?? []} aggregate={aggregate} />
-          <SummaryPanel aggregate={aggregate} session={normalizedSession} />
+        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <GraphPanel
+            players={normalizedSession?.players ?? []}
+            aggregate={aggregate}
+            displayMode={displayMode}
+          />
+          <SummaryPanel aggregate={aggregate} session={normalizedSession} displayMode={displayMode} />
         </div>
 
         {normalizedSession ? (
@@ -242,6 +312,7 @@ const App = () => {
             hands={normalizedSession.hands}
             onEdit={(handId) => setEditingHandId(handId)}
             onDelete={handleDeleteHand}
+            readOnly={displayMode}
           />
         ) : (
           <div className="card p-6 text-sm text-slate-400">
@@ -249,152 +320,158 @@ const App = () => {
           </div>
         )}
       </div>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-10">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                activePanel === "handInput"
-                  ? "bg-amber-500 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-              onClick={() =>
-                setActivePanel((prev) => (prev === "handInput" ? null : "handInput"))
-              }
-            >
-              半荘入力
-            </button>
-            <button
-              type="button"
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                activePanel === "reverse"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-              onClick={() =>
-                setActivePanel((prev) => (prev === "reverse" ? null : "reverse"))
-              }
-            >
-              逆転条件
-            </button>
-            <button
-              type="button"
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                activePanel === "scoreTable"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-              onClick={() =>
-                setActivePanel((prev) => (prev === "scoreTable" ? null : "scoreTable"))
-              }
-            >
-              点数表
-            </button>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                activePanel === "controls"
-                  ? "bg-rose-600 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-              onClick={() =>
-                setActivePanel((prev) => (prev === "controls" ? null : "controls"))
-              }
-            >
-              卓管理
-            </button>
-          </div>
-        </div>
-      </div>
-      {activePanel ? (
-        <div className="fixed inset-0 z-40">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full cursor-default bg-slate-900/30 backdrop-blur-sm"
-            onClick={() => setActivePanel(null)}
-            aria-label="close overlay"
-          />
-          <div className="absolute inset-x-0 top-16 mx-auto w-full max-w-5xl px-4 md:px-10">
-            <div className="card max-h-[75vh] overflow-auto p-0">
-              <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur md:px-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-lg text-slate-900">
-                    {activePanel === "controls"
-                      ? "卓管理"
-                      : activePanel === "handInput"
-                        ? "半荘入力"
-                        : activePanel === "scoreTable"
-                          ? "点数表"
-                        : "逆転条件"}
-                  </h3>
-                  <button
-                    type="button"
-                    className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-200"
-                    onClick={() => setActivePanel(null)}
-                  >
-                    閉じる
-                  </button>
-                </div>
+      {!displayMode ? (
+        <>
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/80 bg-white/90 backdrop-blur">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-10">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "handInput"
+                      ? "bg-amber-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={() =>
+                    setActivePanel((prev) => (prev === "handInput" ? null : "handInput"))
+                  }
+                >
+                  半荘入力
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "reverse"
+                      ? "bg-emerald-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={() =>
+                    setActivePanel((prev) => (prev === "reverse" ? null : "reverse"))
+                  }
+                >
+                  逆転条件
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "scoreTable"
+                      ? "bg-emerald-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={() =>
+                    setActivePanel((prev) => (prev === "scoreTable" ? null : "scoreTable"))
+                  }
+                >
+                  点数表
+                </button>
               </div>
-              <div className="space-y-5 bg-white px-5 py-4 md:px-6 md:py-5">
-                {activePanel === "controls" ? (
-                  <>
-                    {normalizedSession ? (
-                      <PlayerManager
-                        players={normalizedSession.players}
-                        hands={normalizedSession.hands}
-                        onAdd={handleAddPlayer}
-                        onRename={handleRenamePlayer}
-                        onRemove={handleRemovePlayer}
-                      />
-                    ) : (
-                      <div className="card p-6 text-sm text-slate-500">
-                        卓を開始するとプレイヤー管理が有効になります。
-                      </div>
-                    )}
-                    <SessionControls
-                      hasSession={Boolean(normalizedSession)}
-                      onCreate={handleCreateSession}
-                      onResetHands={handleResetHands}
-                    />
-                  </>
-                ) : null}
-                {activePanel === "handInput" ? (
-                  normalizedSession ? (
-                    <HandForm
-                      players={normalizedSession.players}
-                      editingHand={editingHand}
-                      onSave={(seats, editingId) => {
-                        handleSaveHand(seats, editingId);
-                        if (!editingId) {
-                          setActivePanel(null);
-                        }
-                      }}
-                      onCancelEdit={() => setEditingHandId(null)}
-                    />
-                  ) : (
-                    <div className="card p-6 text-sm text-slate-500">
-                      卓を開始してから半荘入力を行えます。
-                    </div>
-                  )
-                ) : null}
-                {activePanel === "reverse" ? (
-                  <ReverseCondition
-                    players={normalizedSession?.players ?? []}
-                    seatPlayerIds={seatPlayerIds}
-                    onToggleSeat={handleToggleSeat}
-                    baseOnlyConditions={baseOnlyConditions}
-                    note="同点パターンの列挙は未対応です。"
-                  />
-                ) : null}
-                {activePanel === "scoreTable" ? <ScoreTable /> : null}
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "controls"
+                      ? "bg-rose-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={() =>
+                    setActivePanel((prev) => (prev === "controls" ? null : "controls"))
+                  }
+                >
+                  卓管理
+                </button>
               </div>
             </div>
           </div>
-        </div>
+          {activePanel ? (
+            <div className="fixed inset-0 z-40">
+              <button
+                type="button"
+                className="absolute inset-0 h-full w-full cursor-default bg-slate-900/30 backdrop-blur-sm"
+                onClick={() => setActivePanel(null)}
+                aria-label="close overlay"
+              />
+              <div className="absolute inset-x-0 top-16 mx-auto w-full max-w-5xl px-4 md:px-10">
+                <div className="card max-h-[75vh] overflow-auto p-0">
+                  <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur md:px-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-display text-lg text-slate-900">
+                        {activePanel === "controls"
+                          ? "卓管理"
+                          : activePanel === "handInput"
+                            ? "半荘入力"
+                            : activePanel === "scoreTable"
+                              ? "点数表"
+                              : "逆転条件"}
+                      </h3>
+                      <button
+                        type="button"
+                        className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-200"
+                        onClick={() => setActivePanel(null)}
+                      >
+                        閉じる
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-5 bg-white px-5 py-4 md:px-6 md:py-5">
+                    {activePanel === "controls" ? (
+                      <>
+                        {normalizedSession ? (
+                          <PlayerManager
+                            players={normalizedSession.players}
+                            hands={normalizedSession.hands}
+                            onAdd={handleAddPlayer}
+                            onRename={handleRenamePlayer}
+                            onRemove={handleRemovePlayer}
+                          />
+                        ) : (
+                          <div className="card p-6 text-sm text-slate-500">
+                            卓を開始するとプレイヤー管理が有効になります。
+                          </div>
+                        )}
+                        <SessionControls
+                          hasSession={Boolean(normalizedSession)}
+                          onCreate={handleCreateSession}
+                          onResetHands={handleResetHands}
+                        />
+                      </>
+                    ) : null}
+                    {activePanel === "handInput" ? (
+                      normalizedSession ? (
+                    <HandForm
+                      players={normalizedSession.players}
+                      editingHand={editingHand}
+                      seatPlayerIds={handSeatIds}
+                      onToggleSeat={handleToggleHandSeat}
+                      onSave={(seats, editingId) => {
+                        handleSaveHand(seats, editingId);
+                        if (!editingId) {
+                              setActivePanel(null);
+                            }
+                          }}
+                          onCancelEdit={() => setEditingHandId(null)}
+                        />
+                      ) : (
+                        <div className="card p-6 text-sm text-slate-500">
+                          卓を開始してから半荘入力を行えます。
+                        </div>
+                      )
+                    ) : null}
+                    {activePanel === "reverse" ? (
+                      <ReverseCondition
+                        players={normalizedSession?.players ?? []}
+                        seatPlayerIds={seatPlayerIds}
+                        onToggleSeat={handleToggleSeat}
+                        baseOnlyConditions={baseOnlyConditions}
+                        note="同点パターンの列挙は未対応です。"
+                      />
+                    ) : null}
+                    {activePanel === "scoreTable" ? <ScoreTable /> : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

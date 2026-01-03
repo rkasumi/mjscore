@@ -17,6 +17,7 @@ import type { SessionAggregate } from "../lib/aggregation";
 type Props = {
   players: Player[];
   aggregate: SessionAggregate | null;
+  displayMode?: boolean;
 };
 
 const COLORS = [
@@ -30,15 +31,16 @@ const COLORS = [
 
 const getPlayerColor = (index: number): string => COLORS[index] ?? "#dc2626";
 
-export const GraphPanel = ({ players, aggregate }: Props) => {
+export const GraphPanel = ({ players, aggregate, displayMode = false }: Props) => {
   const [mode, setMode] = useState<"cumulative" | "hand">("cumulative");
 
   const series = useMemo(() => {
     if (!aggregate) {
       return [];
     }
-    return mode === "cumulative" ? aggregate.cumulativeSeries : aggregate.handSeries;
-  }, [aggregate, mode]);
+    const currentMode = displayMode ? "cumulative" : mode;
+    return currentMode === "cumulative" ? aggregate.cumulativeSeries : aggregate.handSeries;
+  }, [aggregate, displayMode, mode]);
 
   const yAxis = useMemo(() => {
     if (!series.length) {
@@ -72,38 +74,42 @@ export const GraphPanel = ({ players, aggregate }: Props) => {
   const isEmpty = !aggregate || aggregate.handsCount === 0;
 
   return (
-    <div className="card p-4 sm:p-6">
+    <div className={`card ${displayMode ? "p-4" : "p-4 sm:p-6"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="section-title text-2xl sm:text-3xl">成績グラフ</h2>
-        <div className="flex gap-2 rounded-2xl bg-slate-100 p-1 text-xs">
-          <button
-            type="button"
-            className={`rounded-2xl px-3 py-1.5 transition ${
-              mode === "cumulative"
-                ? "bg-rose-600 text-white"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            onClick={() => setMode("cumulative")}
-          >
-            累積pt
-          </button>
-          <button
-            type="button"
-            className={`rounded-2xl px-3 py-1.5 transition ${
-              mode === "hand"
-                ? "bg-rose-600 text-white"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            onClick={() => setMode("hand")}
-          >
-            半荘pt
-          </button>
-        </div>
+        <h2 className={`section-title ${displayMode ? "text-3xl md:text-4xl" : ""}`}>
+          成績グラフ
+        </h2>
+        {!displayMode ? (
+          <div className="flex gap-2 rounded-2xl bg-slate-100 p-1 text-xs">
+            <button
+              type="button"
+              className={`rounded-2xl px-3 py-1.5 transition ${
+                mode === "cumulative"
+                  ? "bg-rose-600 text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              onClick={() => setMode("cumulative")}
+            >
+              累積pt
+            </button>
+            <button
+              type="button"
+              className={`rounded-2xl px-3 py-1.5 transition ${
+                mode === "hand"
+                  ? "bg-rose-600 text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              onClick={() => setMode("hand")}
+            >
+              半荘pt
+            </button>
+          </div>
+        ) : null}
       </div>
       {isEmpty ? (
         <p className="mt-4 text-sm text-slate-400">半荘を入力するとグラフが表示されます。</p>
       ) : (
-        <div className="mt-6 h-80">
+        <div className={`mt-6 ${displayMode ? "h-64" : "h-80"}`}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={series} margin={{ left: 12, right: 24, top: 10, bottom: 0 }}>
               <CartesianGrid stroke="#e2e8f0" vertical={false} />

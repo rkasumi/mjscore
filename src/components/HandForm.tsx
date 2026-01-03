@@ -11,6 +11,8 @@ type SeatInput = {
 type Props = {
   players: Player[];
   editingHand: Hand | null;
+  seatPlayerIds: string[];
+  onToggleSeat: (playerId: string) => void;
   onSave: (seats: HandSeat[], editingId?: string) => void;
   onCancelEdit: () => void;
 };
@@ -33,7 +35,14 @@ const parseScore = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export const HandForm = ({ players, editingHand, onSave, onCancelEdit }: Props) => {
+export const HandForm = ({
+  players,
+  editingHand,
+  seatPlayerIds,
+  onToggleSeat,
+  onSave,
+  onCancelEdit,
+}: Props) => {
   const [seats, setSeats] = useState<SeatInput[]>(buildSeats(players, editingHand));
   const [error, setError] = useState<string | null>(null);
 
@@ -44,12 +53,13 @@ export const HandForm = ({ players, editingHand, onSave, onCancelEdit }: Props) 
 
   const filledSeats = useMemo(() => {
     return seats
+      .filter((seat) => seatPlayerIds.includes(seat.playerId))
       .map((seat) => ({
         ...seat,
         parsedScore: parseScore(seat.score),
       }))
       .filter((seat) => seat.parsedScore !== null);
-  }, [seats]);
+  }, [seatPlayerIds, seats]);
 
   const totalScore = useMemo(() => {
     return filledSeats.reduce((sum, seat) => sum + (seat.parsedScore ?? 0) * 100, 0);
@@ -59,6 +69,9 @@ export const HandForm = ({ players, editingHand, onSave, onCancelEdit }: Props) 
     if (players.length < 4) {
       return "プレイヤーを4人以上登録してください。";
     }
+    if (seatPlayerIds.length !== 4) {
+      return "参加者を4人選択してください。";
+    }
     if (filledSeats.length !== 4) {
       return "点数が入力されたプレイヤーを4人にしてください。";
     }
@@ -66,7 +79,12 @@ export const HandForm = ({ players, editingHand, onSave, onCancelEdit }: Props) 
       return "合計点数が100000点になるように入力してください。";
     }
     return null;
-  }, [players.length, filledSeats.length, totalScore]);
+  }, [players.length, filledSeats.length, seatPlayerIds.length, totalScore]);
+
+  const selectedSeats = useMemo(
+    () => seats.filter((seat) => seatPlayerIds.includes(seat.playerId)),
+    [seatPlayerIds, seats],
+  );
 
   const handleScoreChange = (playerId: string, value: string) => {
     setSeats((prev) =>
@@ -98,8 +116,32 @@ export const HandForm = ({ players, editingHand, onSave, onCancelEdit }: Props) 
       <div className="flex items-center justify-between">
         <span className="text-xs text-slate-400">空欄は抜け番</span>
       </div>
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          {players.map((player) => {
+            const active = seatPlayerIds.includes(player.id);
+            return (
+              <button
+                key={player.id}
+                type="button"
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  active
+                    ? "bg-emerald-500 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+                onClick={() => onToggleSeat(player.id)}
+              >
+                {player.name}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-slate-400">
+          参加者を4人ちょうど選択してください（{seatPlayerIds.length}/4）。
+        </p>
+      </div>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        {seats.map((seat) => (
+        {selectedSeats.map((seat) => (
           <div key={seat.playerId} className="grid gap-3 md:grid-cols-[1fr_160px]">
             <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm">
               {seat.name}
