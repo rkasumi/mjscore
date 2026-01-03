@@ -260,8 +260,8 @@ const App = () => {
       }`}
     >
       <div
-        className={`mx-auto flex max-w-6xl flex-col ${
-          displayMode ? "h-full gap-4" : "gap-6"
+        className={`mx-auto flex flex-col ${
+          displayMode ? "h-full max-w-none gap-4" : "max-w-6xl gap-6"
         }`}
       >
         <header className={displayMode ? "space-y-2" : "space-y-4"}>
@@ -297,7 +297,7 @@ const App = () => {
           </div>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className={`grid gap-6 ${displayMode ? "grid-cols-[0.9fr_1.1fr]" : "lg:grid-cols-[0.9fr_1.1fr]"}`}>
           <GraphPanel
             players={normalizedSession?.players ?? []}
             aggregate={aggregate}
@@ -306,19 +306,21 @@ const App = () => {
           <SummaryPanel aggregate={aggregate} session={normalizedSession} displayMode={displayMode} />
         </div>
 
-        {normalizedSession ? (
-          <HandHistory
-            players={normalizedSession.players}
-            hands={normalizedSession.hands}
-            onEdit={(handId) => setEditingHandId(handId)}
-            onDelete={handleDeleteHand}
-            readOnly={displayMode}
-          />
-        ) : (
-          <div className="card p-6 text-sm text-slate-400">
-            卓を開始すると半荘履歴が表示されます。
-          </div>
-        )}
+        {!displayMode ? (
+          normalizedSession ? (
+            <HandHistory
+              players={normalizedSession.players}
+              hands={normalizedSession.hands}
+              onEdit={(handId) => setEditingHandId(handId)}
+              onDelete={handleDeleteHand}
+              readOnly={displayMode}
+            />
+          ) : (
+            <div className="card p-6 text-sm text-slate-400">
+              卓を開始すると半荘履歴が表示されます。
+            </div>
+          )
+        ) : null}
       </div>
       {!displayMode ? (
         <>
