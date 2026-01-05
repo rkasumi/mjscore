@@ -8,14 +8,22 @@ import { PlayerManager } from "./components/PlayerManager";
 import { ReverseCondition } from "./components/ReverseCondition";
 import { ScoreTable } from "./components/ScoreTable";
 import { SessionControls } from "./components/SessionControls";
+import { SnapshotShare } from "./components/SnapshotShare";
 import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
 import { buildSessionAggregate } from "./lib/aggregation";
 import { createId } from "./lib/id";
 import { calculateBaseOnlyConditions } from "./lib/reversal";
+import { decodeSnapshot, snapshotToSession, type SnapshotV1 } from "./lib/snapshot";
 import { useSessionStore } from "./lib/useSessionStore";
 
 const FIXED_NAMES = ["プレイヤー1", "プレイヤー2"] as const;
+
+type SnapshotState = {
+  encoded: string | null;
+  snapshot: SnapshotV1 | null;
+  error: string | null;
+};
 
 const createSession = (): Session => ({
   id: createId(),
@@ -55,13 +63,48 @@ const removeHand = (hands: Hand[], handId: string): Hand[] =>
 const canRemovePlayer = (session: Session, playerId: string): boolean =>
   !session.hands.some((hand) => hand.seats.some((seat) => seat.playerId === playerId));
 
+const parseSnapshotFromLocation = (): SnapshotState => {
+  const hash = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  const params = new URLSearchParams(hash);
+  const encoded = params.get("s");
+  if (!encoded) {
+    return { encoded: null, snapshot: null, error: null };
+  }
+  const { snapshot, error } = decodeSnapshot(encoded);
+  return { encoded, snapshot, error };
+};
+
 const App = () => {
-  const { session, saveSession, syncState, lastError, meta } = useSessionStore();
+  const [snapshotState, setSnapshotState] = useState<SnapshotState>(parseSnapshotFromLocation);
+  useEffect(() => {
+    const handleHashChange = () => setSnapshotState(parseSnapshotFromLocation());
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+  const snapshotMode = snapshotState.encoded !== null;
+  const snapshotSession = useMemo(
+    () => (snapshotState.snapshot ? snapshotToSession(snapshotState.snapshot) : null),
+    [snapshotState.snapshot],
+  );
+  const {
+    session,
+    setSession,
+    saveSession,
+    syncState,
+    lastError,
+    meta,
+  } = useSessionStore({
+    initialSession: snapshotMode ? snapshotSession : undefined,
+    disableSync: snapshotMode,
+    disablePersistence: snapshotMode,
+  });
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<
     "controls" | "handInput" | "reverse" | "scoreTable" | null
   >(null);
-  const displayMode = useMemo(() => {
+  const queryDisplayMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     const value = params.get("display") ?? params.get("mode") ?? "";
     return value === "1" || value.toLowerCase() === "true" || value === "display";
@@ -69,10 +112,16 @@ const App = () => {
   const inviteUrl = import.meta.env.VITE_INVITE_URL ?? "";
   const inviteImageSrc = "/invite.png";
 
-  const normalizedSession = useMemo(
-    () => (session ? ensureFixedPlayers(session) : null),
-    [session],
-  );
+  const snapshotError = snapshotMode ? snapshotState.error : null;
+  const normalizedSession = useMemo(() => {
+    if (!session) {
+      return null;
+    }
+    if (snapshotMode) {
+      return session;
+    }
+    return ensureFixedPlayers(session);
+  }, [session, snapshotMode]);
   const editingHand =
     normalizedSession?.hands.find((hand) => hand.id === editingHandId) ?? null;
   const aggregate = useMemo(
@@ -158,10 +207,20 @@ const App = () => {
 
   // normalizedSession computed above for consistent usage
   useEffect(() => {
+    if (snapshotMode) {
+      return;
+    }
     if (session && normalizedSession && normalizedSession !== session) {
       saveSession(normalizedSession);
     }
-  }, [normalizedSession, saveSession, session]);
+  }, [normalizedSession, saveSession, session, snapshotMode]);
+
+  useEffect(() => {
+    if (!snapshotMode) {
+      return;
+    }
+    setSession(snapshotSession);
+  }, [setSession, snapshotMode, snapshotSession]);
 
   const handleCreateSession = () => {
     saveSession(createSession());
@@ -253,6 +312,9 @@ const App = () => {
     }
   };
 
+  const displayMode = snapshotMode ? false : queryDisplayMode;
+  const showPanels = !snapshotError;
+
   return (
     <div
       className={`text-slate-900 ${
@@ -276,6 +338,8 @@ const App = () => {
             lastError={lastError}
             meta={meta}
             displayMode={displayMode}
+            snapshotMode={snapshotMode}
+            snapshotError={snapshotError}
           />
         </header>
         {displayMode ? (
@@ -291,38 +355,56 @@ const App = () => {
           </div>
         ) : null}
 
-        {!normalizedSession ? (
+        {snapshotError ? (
+          <div className="card p-6 text-sm text-rose-500">
+            共有リンクの形式が不正です。URLを確認してください。
+          </div>
+        ) : !normalizedSession ? (
           <div className="card p-6 text-sm text-slate-400">
             卓を開始するとプレイヤー登録と半荘入力ができます。
           </div>
         ) : null}
 
-        <div className={`grid gap-6 ${displayMode ? "grid-cols-[0.9fr_1.1fr]" : "lg:grid-cols-[0.9fr_1.1fr]"}`}>
-          <GraphPanel
-            players={normalizedSession?.players ?? []}
-            aggregate={aggregate}
-            displayMode={displayMode}
-          />
-          <SummaryPanel aggregate={aggregate} session={normalizedSession} displayMode={displayMode} />
-        </div>
-
-        {!displayMode ? (
-          normalizedSession ? (
-            <HandHistory
-              players={normalizedSession.players}
-              hands={normalizedSession.hands}
-              onEdit={(handId) => setEditingHandId(handId)}
-              onDelete={handleDeleteHand}
-              readOnly={displayMode}
-            />
-          ) : (
-            <div className="card p-6 text-sm text-slate-400">
-              卓を開始すると半荘履歴が表示されます。
+        {showPanels ? (
+          <>
+            <div
+              className={`grid gap-6 ${
+                displayMode ? "grid-cols-[0.9fr_1.1fr]" : "lg:grid-cols-[0.9fr_1.1fr]"
+              }`}
+            >
+              <GraphPanel
+                players={normalizedSession?.players ?? []}
+                aggregate={aggregate}
+                displayMode={displayMode}
+              />
+              <SummaryPanel
+                aggregate={aggregate}
+                session={normalizedSession}
+                displayMode={displayMode}
+                hideTrendColumns={snapshotMode}
+              />
             </div>
-          )
+
+            {!displayMode ? (
+              normalizedSession ? (
+                <HandHistory
+                  players={normalizedSession.players}
+                  hands={normalizedSession.hands}
+                  onEdit={(handId) => setEditingHandId(handId)}
+                  onDelete={handleDeleteHand}
+                  readOnly={displayMode || snapshotMode}
+                  showRecentOnly={displayMode}
+                />
+              ) : (
+                <div className="card p-6 text-sm text-slate-400">
+                  卓を開始すると半荘履歴が表示されます。
+                </div>
+              )
+            ) : null}
+          </>
         ) : null}
       </div>
-      {!displayMode ? (
+      {!displayMode && !snapshotMode ? (
         <>
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/80 bg-white/90 backdrop-blur">
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-10">
@@ -435,18 +517,19 @@ const App = () => {
                           onCreate={handleCreateSession}
                           onResetHands={handleResetHands}
                         />
+                        <SnapshotShare session={normalizedSession} />
                       </>
                     ) : null}
                     {activePanel === "handInput" ? (
                       normalizedSession ? (
-                    <HandForm
-                      players={normalizedSession.players}
-                      editingHand={editingHand}
-                      seatPlayerIds={handSeatIds}
-                      onToggleSeat={handleToggleHandSeat}
-                      onSave={(seats, editingId) => {
-                        handleSaveHand(seats, editingId);
-                        if (!editingId) {
+                        <HandForm
+                          players={normalizedSession.players}
+                          editingHand={editingHand}
+                          seatPlayerIds={handSeatIds}
+                          onToggleSeat={handleToggleHandSeat}
+                          onSave={(seats, editingId) => {
+                            handleSaveHand(seats, editingId);
+                            if (!editingId) {
                               setActivePanel(null);
                             }
                           }}

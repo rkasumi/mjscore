@@ -16,6 +16,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "lz-string": "^1.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.12.7"
@@ -45,6 +46,7 @@
     "recharts": "Charts for point trends",
     "express": "Session sync API server",
     "cors": "Allow cross-origin polling",
+    "lz-string": "Compressed snapshot links",
     "tailwindcss": "UI styling",
     "tsx": "Run API server in dev",
     "vitest": "Unit tests for scoring"

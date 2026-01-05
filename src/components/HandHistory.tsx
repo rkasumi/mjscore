@@ -14,6 +14,7 @@ type Props = {
   onEdit: (handId: string) => void;
   onDelete: (handId: string) => void;
   readOnly?: boolean;
+  showRecentOnly?: boolean;
 };
 
 type OrderedSeat = {
@@ -40,16 +41,23 @@ const buildOrderedSeats = (players: Player[], hand: Hand): OrderedSeat[] => {
     .sort((a, b) => a.rank - b.rank);
 };
 
-export const HandHistory = ({ players, hands, onEdit, onDelete, readOnly = false }: Props) => {
+export const HandHistory = ({
+  players,
+  hands,
+  onEdit,
+  onDelete,
+  readOnly = false,
+  showRecentOnly = false,
+}: Props) => {
   const showControls = !readOnly;
-  const visibleHands = readOnly ? hands.slice(-2).reverse() : hands;
-  const title = readOnly ? "直近半荘" : "半荘ごと";
-  const countLabel = readOnly
+  const visibleHands = showRecentOnly ? hands.slice(-2).reverse() : hands;
+  const title = showRecentOnly ? "直近半荘" : "半荘ごと";
+  const countLabel = showRecentOnly
     ? `直近${visibleHands.length} 半荘`
     : `${hands.length} 半荘`;
-  const tableTextClass = readOnly ? "text-base" : "text-sm";
-  const headerTextClass = readOnly ? "text-sm" : "text-xs";
-  const contentMarginClass = readOnly ? "mt-3" : "mt-4";
+  const tableTextClass = showRecentOnly ? "text-base" : "text-sm";
+  const headerTextClass = showRecentOnly ? "text-sm" : "text-xs";
+  const contentMarginClass = showRecentOnly ? "mt-3" : "mt-4";
   return (
     <div className="card p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">

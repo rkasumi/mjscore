@@ -8,6 +8,7 @@ type Props = {
   aggregate: SessionAggregate | null;
   session: Session | null;
   displayMode?: boolean;
+  hideTrendColumns?: boolean;
 };
 
 type HandDetail = {
@@ -19,11 +20,17 @@ type HandDetail = {
 
 const formatScore = (score: number): string => `${score.toLocaleString()}点`;
 
-export const SummaryPanel = ({ aggregate, session, displayMode = false }: Props) => {
+export const SummaryPanel = ({
+  aggregate,
+  session,
+  displayMode = false,
+  hideTrendColumns = false,
+}: Props) => {
   const tableTextClass = displayMode ? "text-base" : "text-sm";
   const headerTextClass = displayMode ? "text-sm" : "text-xs";
   const isInteractive = !displayMode;
   const extraColumnClass = displayMode ? "" : "hidden lg:table-cell";
+  const trendColumnClass = hideTrendColumns ? "hidden" : extraColumnClass;
   const [openPlayerId, setOpenPlayerId] = useState<string | null>(null);
   const sumPositive =
     aggregate?.players.reduce((sum, player) => sum + Math.max(player.totalPoint, 0), 0) ?? 0;
@@ -123,8 +130,8 @@ export const SummaryPanel = ({ aggregate, session, displayMode = false }: Props)
                 <th className="py-2 pr-3">名前</th>
                 <th className="py-2 pr-3">合計ポイント</th>
                 <th className={`py-2 pr-3 text-center ${extraColumnClass}`}>首位差</th>
-                <th className={`py-2 pr-3 text-center ${extraColumnClass}`}>直近</th>
-                <th className={`py-2 pr-3 text-center ${extraColumnClass}`}>変動</th>
+                <th className={`py-2 pr-3 text-center ${trendColumnClass}`}>直近</th>
+                <th className={`py-2 pr-3 text-center ${trendColumnClass}`}>変動</th>
                 <th className="py-2 pr-3 text-center">平均順位</th>
                 <th className="py-2 text-center">半荘</th>
               </tr>
@@ -205,10 +212,10 @@ export const SummaryPanel = ({ aggregate, session, displayMode = false }: Props)
                       <td className={`py-2 pr-3 text-center text-slate-600 ${extraColumnClass}`}>
                         {leaderGap <= 0 ? "-" : `-${leaderGap.toFixed(1)}`}
                       </td>
-                      <td className={`py-2 pr-3 text-center ${lastDeltaClass} ${extraColumnClass}`}>
+                      <td className={`py-2 pr-3 text-center ${lastDeltaClass} ${trendColumnClass}`}>
                         {lastDeltaLabel}
                       </td>
-                      <td className={`py-2 pr-3 text-center ${rankDeltaClass} ${extraColumnClass}`}>
+                      <td className={`py-2 pr-3 text-center ${rankDeltaClass} ${trendColumnClass}`}>
                         {rankDeltaLabel}
                       </td>
                       <td className="py-2 pr-3 text-center text-slate-600">

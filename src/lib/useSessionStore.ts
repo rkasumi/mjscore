@@ -25,9 +25,17 @@ const shouldApplyEnvelope = (
   return envelope.version > currentVersion;
 };
 
-export const useSessionStore = () => {
-  const initialSession = loadLocalSession();
-  const initialMeta = loadLocalMeta();
+type UseSessionStoreOptions = {
+  initialSession?: Session | null;
+  disableSync?: boolean;
+  disablePersistence?: boolean;
+};
+
+export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
+  const { initialSession: initialSessionOverride, disableSync = false, disablePersistence = false } =
+    options;
+  const initialSession = initialSessionOverride ?? (disablePersistence ? null : loadLocalSession());
+  const initialMeta = disablePersistence ? null : loadLocalMeta();
   const [session, setSession] = useState<Session | null>(initialSession);
   const [meta, setMeta] = useState<SessionMeta | null>(initialMeta);
   const [syncState, setSyncState] = useState<SyncState>("idle");
@@ -37,22 +45,32 @@ export const useSessionStore = () => {
   const sync = useMemo(() => new HttpPollingSessionSync(apiBaseUrl), [apiBaseUrl]);
   const versionRef = useRef<number | null>(meta?.version ?? null);
 
-  const applyEnvelope = useCallback((envelope: SessionEnvelope) => {
-    if (!envelope.session) {
-      return;
-    }
-    const nextMeta = { version: envelope.version, updatedAt: envelope.updatedAt };
-    versionRef.current = envelope.version;
-    setSession(envelope.session);
-    setMeta(nextMeta);
-    saveLocalSession(envelope.session);
-    saveLocalMeta(nextMeta);
-  }, []);
+  const applyEnvelope = useCallback(
+    (envelope: SessionEnvelope) => {
+      if (!envelope.session) {
+        return;
+      }
+      const nextMeta = { version: envelope.version, updatedAt: envelope.updatedAt };
+      versionRef.current = envelope.version;
+      setSession(envelope.session);
+      setMeta(nextMeta);
+      if (!disablePersistence) {
+        saveLocalSession(envelope.session);
+        saveLocalMeta(nextMeta);
+      }
+    },
+    [disablePersistence],
+  );
 
   const saveSession = useCallback(
     async (next: Session) => {
       setSession(next);
-      saveLocalSession(next);
+      if (!disablePersistence) {
+        saveLocalSession(next);
+      }
+      if (disableSync) {
+        return;
+      }
       setSyncState("syncing");
       setLastError(null);
 
@@ -63,7 +81,9 @@ export const useSessionStore = () => {
           const nextMeta = { version: envelope.version, updatedAt: envelope.updatedAt };
           versionRef.current = envelope.version;
           setMeta(nextMeta);
-          saveLocalMeta(nextMeta);
+          if (!disablePersistence) {
+            saveLocalMeta(nextMeta);
+          }
         }
         setSyncState("idle");
       } catch (error) {
@@ -71,10 +91,13 @@ export const useSessionStore = () => {
         setLastError(error instanceof Error ? error.message : "Sync failed");
       }
     },
-    [sync],
+    [disablePersistence, disableSync, sync],
   );
 
   useEffect(() => {
+    if (disableSync) {
+      return;
+    }
     const loadRemote = async () => {
       try {
         const remoteSession = await sync.load();
@@ -88,15 +111,18 @@ export const useSessionStore = () => {
     };
 
     void loadRemote();
-  }, [applyEnvelope, sync]);
+  }, [applyEnvelope, disableSync, sync]);
 
   useEffect(() => {
+    if (disableSync) {
+      return;
+    }
     return sync.startPolling((envelope) => {
       if (shouldApplyEnvelope(envelope, versionRef.current)) {
         applyEnvelope(envelope);
       }
     });
-  }, [applyEnvelope, sync]);
+  }, [applyEnvelope, disableSync, sync]);
 
   return {
     session,
