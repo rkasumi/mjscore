@@ -38,6 +38,7 @@ const buildParentCell = (fu: number, han: number): { ron: number; tsumo: number 
 
 export const ScoreTable = () => {
   const [mode, setMode] = useState<"child" | "parent" | "fu">("child");
+  const highlightEnabled = true;
   const table = useMemo(() => {
     return FU_VALUES.map((fu) => {
       const cells = HAN_VALUES.map((han) =>
@@ -199,10 +200,20 @@ export const ScoreTable = () => {
                   <td className="border-t border-slate-200 px-3 py-2 text-center text-slate-600">
                     {row.fu}符
                   </td>
-                  {row.cells.map((cell, index) => (
+                  {row.cells.map((cell, index) => {
+                    const han = HAN_VALUES[index];
+                    const isFrequent =
+                      highlightEnabled && row.fu >= 20 && row.fu <= 40 && han >= 1 && han <= 4;
+                    const isLimit = isMangan(row.fu, han);
+                    const cellClass = isLimit
+                      ? "bg-amber-100/70 text-amber-800"
+                      : isFrequent
+                        ? "bg-amber-50/70"
+                        : "";
+                    return (
                     <td
                       key={`${row.fu}-${index}`}
-                      className="border-t border-slate-200 px-3 py-2 text-center text-slate-700"
+                      className={`border-t border-slate-200 px-3 py-2 text-center text-slate-700 ${cellClass}`}
                     >
                       {row.fu === 20 && HAN_VALUES[index] === 1 ? (
                         <div className="text-sm font-semibold text-slate-900">ピンフツモ</div>
@@ -251,7 +262,8 @@ export const ScoreTable = () => {
                         </>
                       )}
                     </td>
-                  ))}
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

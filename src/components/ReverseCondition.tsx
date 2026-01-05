@@ -12,7 +12,7 @@ type Props = {
 };
 
 const NOTE_TEXT =
-  "同点が起きると順位点が平均配分され、条件が変わる場合があります。";
+  "同点が起きると順位点が平均配分され、条件が変わる場合があります。同点になるとウマが平均され、条件が前後する可能性があります。";
 
 const formatScore = (value: number): string => `${value.toLocaleString()}点以上`;
 const TOOLTIP_LINES = [
@@ -78,6 +78,9 @@ const BaseOnlyTable = ({
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-800">素点条件（順位点無視）</h3>
       </div>
+      <p className="mt-1 text-[11px] text-slate-500">
+        pt換算: (点差)/1000 を小数1桁で四捨五入
+      </p>
       <div className="mt-3 overflow-visible rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-xs">
           <thead>
@@ -269,6 +272,9 @@ export const ReverseCondition = ({
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-slate-800">総合1位条件</h3>
                   </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    総合pt = 素点pt + 順位点（同点時は平均配分）
+                  </p>
                   {(() => {
                     const rank1Tables = buildOverallFirstTables({
                       baseCondition: baseOnlyMap.get(player.id),

@@ -65,7 +65,7 @@ export const buildSnapshot = (session: Session): SnapshotV1 => {
   return {
     t: SNAPSHOT_TYPE,
     v: SNAPSHOT_VERSION,
-    d: toDateString(session.createdAt),
+    d: session.day ?? toDateString(session.createdAt),
     p: names,
     h: session.hands.map((hand) => buildSnapshotHand(hand, map)),
   };
@@ -159,6 +159,7 @@ export const snapshotToSession = (snapshot: SnapshotV1): Session => {
   return {
     id: createId(),
     createdAt: new Date(baseTime).toISOString(),
+    day: snapshot.d,
     players,
     hands,
   };

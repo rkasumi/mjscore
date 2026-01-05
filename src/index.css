@@ -21,7 +21,7 @@ body {
 }
 
 .card {
-  @apply w-full rounded-3xl border border-slate-200/80 bg-white/80 shadow-soft;
+  @apply w-full min-w-0 rounded-3xl border border-slate-200/80 bg-white/80 shadow-soft;
 }
 
 .section-title {
@@ -30,4 +30,16 @@ body {
 
 .glow-divider {
   background: linear-gradient(90deg, rgba(198, 27, 42, 0.6), rgba(243, 181, 72, 0.5), transparent);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
+input[type="number"] {
+  font-size: 16px;
 }

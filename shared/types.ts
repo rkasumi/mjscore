@@ -17,6 +17,8 @@ export type Hand = {
 export type Session = {
   id: string;
   createdAt: string;
+  day?: string;
+  label?: string;
   players: Player[];
   hands: Hand[];
 };

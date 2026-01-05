@@ -6,6 +6,7 @@ type SeatInput = {
   playerId: string;
   name: string;
   score: string;
+  isAuto: boolean;
 };
 
 type Props = {
@@ -24,6 +25,7 @@ const buildSeats = (players: Player[], hand: Hand | null): SeatInput[] =>
       playerId: player.id,
       name: player.name,
       score: match ? String(match.score / 100) : "",
+      isAuto: false,
     };
   });
 
@@ -45,25 +47,87 @@ export const HandForm = ({
 }: Props) => {
   const [seats, setSeats] = useState<SeatInput[]>(buildSeats(players, editingHand));
   const [error, setError] = useState<string | null>(null);
+  const [autoFillEnabled, setAutoFillEnabled] = useState(true);
 
   useEffect(() => {
     setSeats(buildSeats(players, editingHand));
     setError(null);
   }, [editingHand, players]);
 
-  const filledSeats = useMemo(() => {
-    return seats
-      .filter((seat) => seatPlayerIds.includes(seat.playerId))
-      .map((seat) => ({
+  const selectedSeats = useMemo(
+    () => seats.filter((seat) => seatPlayerIds.includes(seat.playerId)),
+    [seatPlayerIds, seats],
+  );
+
+  const parsedSelectedSeats = useMemo(
+    () =>
+      selectedSeats.map((seat) => ({
         ...seat,
         parsedScore: parseScore(seat.score),
-      }))
-      .filter((seat) => seat.parsedScore !== null);
-  }, [seatPlayerIds, seats]);
+      })),
+    [selectedSeats],
+  );
+
+  const filledSeats = useMemo(
+    () => parsedSelectedSeats.filter((seat) => seat.parsedScore !== null),
+    [parsedSelectedSeats],
+  );
 
   const totalScore = useMemo(() => {
-    return filledSeats.reduce((sum, seat) => sum + (seat.parsedScore ?? 0) * 100, 0);
-  }, [filledSeats]);
+    return parsedSelectedSeats.reduce((sum, seat) => sum + (seat.parsedScore ?? 0) * 100, 0);
+  }, [parsedSelectedSeats]);
+
+  const remainingScore = 100000 - totalScore;
+
+  useEffect(() => {
+    const clearAutoFlags = () =>
+      setSeats((prev) => {
+        let changed = false;
+        const next = prev.map((seat) => {
+          if (!seat.isAuto) {
+            return seat;
+          }
+          changed = true;
+          return { ...seat, isAuto: false };
+        });
+        return changed ? next : prev;
+      });
+
+    if (!autoFillEnabled || seatPlayerIds.length !== 4) {
+      clearAutoFlags();
+      return;
+    }
+    const emptySeats = parsedSelectedSeats.filter(
+      (seat) => seat.parsedScore === null && seat.score.trim() === "",
+    );
+    const filled = parsedSelectedSeats.filter((seat) => seat.parsedScore !== null);
+    if (emptySeats.length === 1 && filled.length === 3) {
+      const total = filled.reduce((sum, seat) => sum + (seat.parsedScore ?? 0), 0);
+      const remaining = 1000 - total;
+      const targetId = emptySeats[0].playerId;
+      setSeats((prev) => {
+        let changed = false;
+        const nextScore = Number.isFinite(remaining) ? String(remaining) : "";
+        const next = prev.map((seat) => {
+          if (seat.playerId !== targetId) {
+            if (seat.isAuto) {
+              changed = true;
+              return { ...seat, isAuto: false };
+            }
+            return seat;
+          }
+          if (seat.score === nextScore && seat.isAuto) {
+            return seat;
+          }
+          changed = true;
+          return { ...seat, score: nextScore, isAuto: true };
+        });
+        return changed ? next : prev;
+      });
+      return;
+    }
+    clearAutoFlags();
+  }, [autoFillEnabled, parsedSelectedSeats, seatPlayerIds]);
 
   const validationMessage = useMemo(() => {
     if (players.length < 4) {
@@ -81,14 +145,11 @@ export const HandForm = ({
     return null;
   }, [players.length, filledSeats.length, seatPlayerIds.length, totalScore]);
 
-  const selectedSeats = useMemo(
-    () => seats.filter((seat) => seatPlayerIds.includes(seat.playerId)),
-    [seatPlayerIds, seats],
-  );
-
   const handleScoreChange = (playerId: string, value: string) => {
     setSeats((prev) =>
-      prev.map((seat) => (seat.playerId === playerId ? { ...seat, score: value } : seat)),
+      prev.map((seat) =>
+        seat.playerId === playerId ? { ...seat, score: value, isAuto: false } : seat,
+      ),
     );
   };
 
@@ -113,8 +174,16 @@ export const HandForm = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-slate-400">空欄は抜け番</span>
+        <label className="flex items-center gap-2 text-xs text-slate-500">
+          <input
+            type="checkbox"
+            checked={autoFillEnabled}
+            onChange={(event) => setAutoFillEnabled(event.target.checked)}
+          />
+          最後の1人を自動計算
+        </label>
       </div>
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
@@ -142,15 +211,28 @@ export const HandForm = ({
       </div>
       <form className="space-y-4" onSubmit={handleSubmit}>
         {selectedSeats.map((seat) => (
-          <div key={seat.playerId} className="grid gap-3 md:grid-cols-[1fr_160px]">
+          <div key={seat.playerId} className="grid gap-3 md:grid-cols-[1fr_180px]">
             <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm">
-              {seat.name}
+              <div className="flex items-center justify-between gap-2">
+                <span>{seat.name}</span>
+                {seat.isAuto ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                    自動
+                  </span>
+                ) : null}
+              </div>
             </div>
-            <div className="flex items-center overflow-hidden rounded-2xl border border-slate-200 bg-white/80 text-sm">
+            <div
+              className={`flex items-center overflow-hidden rounded-2xl border border-slate-200 text-base ${
+                seat.isAuto ? "bg-amber-50" : "bg-white/80"
+              }`}
+            >
               <input
                 type="number"
                 step={1}
-                className="w-full bg-transparent px-3 py-2 outline-none"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="min-h-[44px] w-full bg-transparent px-3 py-2 text-base outline-none"
                 value={seat.score}
                 onChange={(event) => handleScoreChange(seat.playerId, event.target.value)}
               />
@@ -158,15 +240,36 @@ export const HandForm = ({
             </div>
           </div>
         ))}
-        <div className="flex flex-col gap-2 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
-          <span>合計: {totalScore} 点</span>
-          {validationMessage && !error ? <span>{validationMessage}</span> : null}
+        <div className="flex flex-col gap-2 text-sm md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-3 text-slate-500">
+            <span>合計: {totalScore} 点</span>
+            <span
+              className={`font-semibold ${
+                remainingScore === 0
+                  ? "text-emerald-600"
+                  : remainingScore > 0
+                    ? "text-amber-600"
+                    : "text-rose-600"
+              }`}
+            >
+              残り: {remainingScore} 点
+              {remainingScore > 0 ? "（不足）" : remainingScore < 0 ? "（超過）" : ""}
+            </span>
+          </div>
+          {validationMessage && !error ? (
+            <span className="text-slate-400">{validationMessage}</span>
+          ) : null}
         </div>
         {error ? <p className="text-sm text-rose-300">{error}</p> : null}
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
-            className="rounded-2xl bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-200"
+            className={`rounded-2xl px-4 py-2 text-sm font-semibold ${
+              validationMessage
+                ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+            }`}
+            disabled={Boolean(validationMessage)}
           >
             {editingHand ? "更新" : "追加"}
           </button>

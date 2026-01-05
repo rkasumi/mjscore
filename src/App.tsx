@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import type { Hand, HandSeat, Session } from "../shared/types";
 import { GraphPanel } from "./components/GraphPanel";
@@ -25,9 +25,28 @@ type SnapshotState = {
   error: string | null;
 };
 
+const toJstDateString = (value: Date): string => {
+  const formatter = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(value).replace(/\//g, "-");
+};
+
+const deriveSessionDay = (session: Session): string => {
+  if (session.day) {
+    return session.day;
+  }
+  const parsed = new Date(session.createdAt);
+  return toJstDateString(Number.isNaN(parsed.getTime()) ? new Date() : parsed);
+};
+
 const createSession = (): Session => ({
   id: createId(),
   createdAt: new Date().toISOString(),
+  day: toJstDateString(new Date()),
   players: FIXED_NAMES.map((name) => ({ id: createId(), name })),
   hands: [],
 });
@@ -95,6 +114,9 @@ const App = () => {
     syncState,
     lastError,
     meta,
+    lostChanges,
+    setLostChanges,
+    retrySync,
   } = useSessionStore({
     initialSession: snapshotMode ? snapshotSession : undefined,
     disableSync: snapshotMode,
@@ -104,6 +126,9 @@ const App = () => {
   const [activePanel, setActivePanel] = useState<
     "controls" | "handInput" | "reverse" | "scoreTable" | null
   >(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
   const queryDisplayMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     const value = params.get("display") ?? params.get("mode") ?? "";
@@ -128,6 +153,14 @@ const App = () => {
     () => (normalizedSession ? buildSessionAggregate(normalizedSession) : null),
     [normalizedSession],
   );
+  const sessionInfo = useMemo(() => {
+    if (!normalizedSession) {
+      return null;
+    }
+    const day = deriveSessionDay(normalizedSession);
+    const label = normalizedSession.label?.trim() ?? "";
+    return { day, label };
+  }, [normalizedSession]);
   const defaultSeatIds = useMemo(() => {
     if (!normalizedSession) {
       return [];
@@ -230,7 +263,13 @@ const App = () => {
     if (!session) {
       return;
     }
-    const next = { ...session, id: createId(), createdAt: new Date().toISOString(), hands: [] };
+    const next = {
+      ...session,
+      id: createId(),
+      createdAt: new Date().toISOString(),
+      day: toJstDateString(new Date()),
+      hands: [],
+    };
     saveSession(next);
     setEditingHandId(null);
   };
@@ -281,6 +320,13 @@ const App = () => {
     saveSession(next);
   };
 
+  const handleUpdateSessionInfo = (next: { day?: string; label?: string }) => {
+    if (!normalizedSession) {
+      return;
+    }
+    saveSession({ ...normalizedSession, ...next });
+  };
+
   const handleSaveHand = (seats: HandSeat[], editingId?: string) => {
     if (!normalizedSession) {
       return;
@@ -312,24 +358,90 @@ const App = () => {
     }
   };
 
+  const handleTogglePanel =
+    (panel: "controls" | "handInput" | "reverse" | "scoreTable") =>
+    (event: MouseEvent<HTMLElement>) => {
+      lastTriggerRef.current = event.currentTarget;
+      setActivePanel((prev) => (prev === panel ? null : panel));
+    };
+
   const displayMode = snapshotMode ? false : queryDisplayMode;
   const showPanels = !snapshotError;
+  const panelTitleId = activePanel ? `panel-title-${activePanel}` : "panel-title";
+
+  useEffect(() => {
+    if (!lostChanges) {
+      return;
+    }
+    const timer = window.setTimeout(() => setLostChanges(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [lostChanges, setLostChanges]);
+
+  useEffect(() => {
+    if (!activePanel) {
+      if (lastTriggerRef.current) {
+        lastTriggerRef.current.focus();
+      }
+      return;
+    }
+    const focusableSelector =
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+    const focusable = modalRef.current
+      ? Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+      : [];
+    const first = closeButtonRef.current ?? focusable[0] ?? null;
+    first?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setActivePanel(null);
+        return;
+      }
+      if (event.key !== "Tab" || focusable.length === 0) {
+        return;
+      }
+      const current = document.activeElement as HTMLElement | null;
+      const firstEl = focusable[0];
+      const lastEl = focusable[focusable.length - 1];
+      if (event.shiftKey) {
+        if (current === firstEl || !modalRef.current?.contains(current)) {
+          event.preventDefault();
+          lastEl.focus();
+        }
+      } else if (current === lastEl) {
+        event.preventDefault();
+        firstEl.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [activePanel]);
 
   return (
     <div
-      className={`text-slate-900 ${
+      className={`max-w-[100vw] overflow-x-hidden text-slate-900 ${
         displayMode ? "h-screen overflow-hidden px-6 py-6" : "min-h-screen px-4 pb-32 pt-10 md:px-10"
       }`}
     >
       <div
-        className={`mx-auto flex flex-col ${
+        className={`mx-auto flex min-w-0 flex-col ${
           displayMode ? "h-full max-w-none gap-4" : "max-w-6xl gap-6"
         }`}
       >
         <header className={displayMode ? "space-y-2" : "space-y-4"}>
           {!displayMode ? (
             <div>
-              <h1 className="font-display text-3xl md:text-4xl">麻雀スコア管理</h1>
+              <h1 className="font-display text-3xl md:text-4xl">
+                麻雀スコア管理
+                {sessionInfo ? (
+                  <span className="ml-2 text-base font-normal text-slate-500">
+                    ({sessionInfo.day}
+                    {sessionInfo.label ? ` / ${sessionInfo.label}` : ""})
+                  </span>
+                ) : null}
+              </h1>
             </div>
           ) : null}
           {!displayMode ? <div className="glow-divider h-px w-full" /> : null}
@@ -340,7 +452,13 @@ const App = () => {
             displayMode={displayMode}
             snapshotMode={snapshotMode}
             snapshotError={snapshotError}
+            onRetrySync={retrySync}
           />
+          {lostChanges ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">
+              未送信の変更がリモート同期により上書きされました。
+            </div>
+          ) : null}
         </header>
         {displayMode ? (
           <div className="pointer-events-none fixed right-4 top-4 z-40">
@@ -416,9 +534,7 @@ const App = () => {
                       ? "bg-amber-500 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
-                  onClick={() =>
-                    setActivePanel((prev) => (prev === "handInput" ? null : "handInput"))
-                  }
+                  onClick={handleTogglePanel("handInput")}
                 >
                   半荘入力
                 </button>
@@ -429,9 +545,7 @@ const App = () => {
                       ? "bg-emerald-500 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
-                  onClick={() =>
-                    setActivePanel((prev) => (prev === "reverse" ? null : "reverse"))
-                  }
+                  onClick={handleTogglePanel("reverse")}
                 >
                   逆転条件
                 </button>
@@ -442,9 +556,7 @@ const App = () => {
                       ? "bg-emerald-500 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
-                  onClick={() =>
-                    setActivePanel((prev) => (prev === "scoreTable" ? null : "scoreTable"))
-                  }
+                  onClick={handleTogglePanel("scoreTable")}
                 >
                   点数表
                 </button>
@@ -457,9 +569,7 @@ const App = () => {
                       ? "bg-rose-600 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
-                  onClick={() =>
-                    setActivePanel((prev) => (prev === "controls" ? null : "controls"))
-                  }
+                  onClick={handleTogglePanel("controls")}
                 >
                   卓管理
                 </button>
@@ -473,12 +583,20 @@ const App = () => {
                 className="absolute inset-0 h-full w-full cursor-default bg-slate-900/30 backdrop-blur-sm"
                 onClick={() => setActivePanel(null)}
                 aria-label="close overlay"
+                tabIndex={-1}
+                aria-hidden="true"
               />
               <div className="absolute inset-x-0 top-16 mx-auto w-full max-w-5xl px-4 md:px-10">
-                <div className="card max-h-[75vh] overflow-auto p-0">
+                <div
+                  ref={modalRef}
+                  className="card max-h-[75vh] overflow-auto p-0"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby={panelTitleId}
+                >
                   <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur md:px-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-display text-lg text-slate-900">
+                      <h3 id={panelTitleId} className="font-display text-lg text-slate-900">
                         {activePanel === "controls"
                           ? "卓管理"
                           : activePanel === "handInput"
@@ -491,6 +609,7 @@ const App = () => {
                         type="button"
                         className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-200"
                         onClick={() => setActivePanel(null)}
+                        ref={closeButtonRef}
                       >
                         閉じる
                       </button>
@@ -517,6 +636,40 @@ const App = () => {
                           onCreate={handleCreateSession}
                           onResetHands={handleResetHands}
                         />
+                        {normalizedSession ? (
+                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
+                            <div className="text-sm font-semibold text-slate-800">卓情報</div>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <label className="space-y-1 text-xs text-slate-500">
+                                日付
+                                <input
+                                  type="date"
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-700"
+                                  value={sessionInfo?.day ?? ""}
+                                  onChange={(event) =>
+                                    handleUpdateSessionInfo({
+                                      day: event.target.value || undefined,
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="space-y-1 text-xs text-slate-500">
+                                ラベル
+                                <input
+                                  type="text"
+                                  placeholder="例: 夜 / 自宅 / 第2部"
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-700"
+                                  value={sessionInfo?.label ?? ""}
+                                  onChange={(event) =>
+                                    handleUpdateSessionInfo({
+                                      label: event.target.value || undefined,
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        ) : null}
                         <SnapshotShare session={normalizedSession} />
                       </>
                     ) : null}
