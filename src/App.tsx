@@ -589,7 +589,7 @@ const App = () => {
               <div className="absolute inset-x-0 top-16 mx-auto w-full max-w-5xl px-4 md:px-10">
                 <div
                   ref={modalRef}
-                  className="card max-h-[75vh] overflow-auto p-0"
+                  className="card max-h-[85vh] overflow-auto p-0"
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby={panelTitleId}

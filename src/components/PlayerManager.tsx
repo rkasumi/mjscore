@@ -48,10 +48,10 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
             return (
               <div
                 key={player.id}
-                className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 md:flex-row md:items-center"
+                className="flex items-center gap-2 flex-nowrap"
               >
                 <input
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                   value={player.name}
                   onChange={(event) => onRename(player.id, event.target.value)}
                   disabled={isFixed}
@@ -59,7 +59,7 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
                 {!isFixed ? (
                   <button
                     type="button"
-                    className={`rounded-xl px-3 py-2 text-sm transition ${
+                    className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm transition ${
                       isLocked
                         ? "cursor-not-allowed bg-slate-100 text-slate-400"
                         : "bg-rose-100 text-rose-700 hover:bg-rose-200"
@@ -70,12 +70,14 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
                     削除
                   </button>
                 ) : (
-                  <span className="rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500">
+                  <span className="whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500">
                     固定
                   </span>
                 )}
                 {isLocked && !isFixed ? (
-                  <span className="text-xs text-slate-500">履歴に使われています</span>
+                  <span className="whitespace-nowrap text-xs text-slate-500">
+                    履歴に使われています
+                  </span>
                 ) : null}
               </div>
             );
@@ -86,14 +88,14 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
             return (
               <div
                 key={slot.id}
-                className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 md:flex-row md:items-center"
+                className="flex items-center gap-2 flex-nowrap"
               >
                 <input
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                   value={index === 0 ? "プレイヤー1" : "プレイヤー2"}
                   disabled
                 />
-                <span className="rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500">
+                <span className="whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500">
                   固定
                 </span>
               </div>
@@ -104,10 +106,10 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
           return (
             <div
               key={slot.id}
-              className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-200 bg-white/60 p-3 md:flex-row md:items-center"
+              className="flex items-center gap-2 flex-nowrap"
             >
               <input
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                 placeholder={`プレイヤー${index + 1}`}
                 value={draft.name}
                 onChange={(event) => {
@@ -121,7 +123,7 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
               />
               <button
                 type="button"
-                className={`rounded-xl px-3 py-2 text-sm transition ${
+                className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm transition ${
                   canAdd
                     ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                     : "cursor-not-allowed bg-slate-100 text-slate-400"
@@ -145,16 +147,16 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
           );
         })}
       </div>
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+      <div className="flex flex-row items-center gap-2">
         <input
-          className="flex-1 rounded-2xl border border-slate-200 bg-white/80 px-4 py-2 text-sm"
+          className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white/80 px-4 py-2 text-sm"
           placeholder="追加プレイヤー（5人目以降）"
           value={extraName}
           onChange={(event) => setExtraName(event.target.value)}
         />
         <button
           type="button"
-          className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+          className={`whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-semibold transition ${
             canAddExtra
               ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
               : "cursor-not-allowed bg-slate-100 text-slate-400"
