@@ -1,5 +1,14 @@
 # mjscore
 
+## Development
+
+```sh
+pnpm dev
+pnpm dev:api
+pnpm build
+pnpm -s check
+```
+
 ## Production deployment (nginx + Podman compose)
 
 ### 1) Build and deploy the SPA
