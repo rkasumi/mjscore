@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { NumericFormat } from "react-number-format";
 
 import type { Hand, HandSeat, Player } from "../../shared/types";
 
@@ -207,19 +208,22 @@ export const HandForm = ({
                 {seat.name}
               </div>
               <div className="flex w-28 items-center overflow-hidden rounded-2xl border border-slate-200 bg-white/80 text-base sm:w-32 md:w-40">
-                <input
-                  type="number"
-                  step={1}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  className="min-h-[34px] w-full bg-transparent px-2 py-1.5 text-base outline-none"
+                <NumericFormat
+                  allowNegative
+                  decimalScale={0}
+                  thousandSeparator={false}
+                  valueIsNumericString
+                  inputMode="text"
+                  className="score-input min-h-[34px] w-full bg-transparent px-2 py-1.5 text-base outline-none"
                   value={seat.score}
                   placeholder={
                     autoFillCandidate && autoFillCandidate.playerId === seat.playerId
                       ? String(autoFillCandidate.value)
                       : ""
                   }
-                  onChange={(event) => handleScoreChange(seat.playerId, event.target.value)}
+                  onValueChange={(values) =>
+                    handleScoreChange(seat.playerId, values.formattedValue)
+                  }
                 />
                 <span className="border-l border-slate-200 px-2 py-1 text-slate-500">00</span>
               </div>

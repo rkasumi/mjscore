@@ -40,6 +40,6 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
-input[type="number"] {
+.score-input {
   font-size: 16px;
 }
