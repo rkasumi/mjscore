@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -18,6 +18,7 @@ type Props = {
   players: Player[];
   aggregate: SessionAggregate | null;
   displayMode?: boolean;
+  graphRotateIntervalMs?: number;
 };
 
 const COLORS = [
@@ -31,16 +32,38 @@ const COLORS = [
 
 const getPlayerColor = (index: number): string => COLORS[index] ?? "#dc2626";
 
-export const GraphPanel = ({ players, aggregate, displayMode = false }: Props) => {
+export const GraphPanel = ({
+  players,
+  aggregate,
+  displayMode = false,
+  graphRotateIntervalMs,
+}: Props) => {
   const [mode, setMode] = useState<"cumulative" | "hand">("cumulative");
+  const [displayModeMode, setDisplayModeMode] = useState<"cumulative" | "hand">("cumulative");
 
+  useEffect(() => {
+    if (!displayMode || !graphRotateIntervalMs || graphRotateIntervalMs <= 0) {
+      setDisplayModeMode("cumulative");
+      return;
+    }
+    const modes: Array<"cumulative" | "hand"> = ["cumulative", "hand"];
+    let index = 0;
+    setDisplayModeMode(modes[index]);
+    const intervalId = window.setInterval(() => {
+      index = (index + 1) % modes.length;
+      setDisplayModeMode(modes[index]);
+    }, graphRotateIntervalMs);
+    return () => window.clearInterval(intervalId);
+  }, [displayMode, graphRotateIntervalMs]);
+
+  const currentMode = displayMode ? displayModeMode : mode;
   const series = useMemo(() => {
     if (!aggregate) {
       return [];
     }
-    const currentMode = displayMode ? "cumulative" : mode;
     return currentMode === "cumulative" ? aggregate.cumulativeSeries : aggregate.handSeries;
-  }, [aggregate, displayMode, mode]);
+  }, [aggregate, currentMode]);
+  const modeLabel = currentMode === "cumulative" ? "累積pt" : "半荘pt";
 
   const yAxis = useMemo(() => {
     if (!series.length) {
@@ -104,7 +127,9 @@ export const GraphPanel = ({ players, aggregate, displayMode = false }: Props) =
               半荘pt
             </button>
           </div>
-        ) : null}
+        ) : (
+          <span className="text-sm font-semibold text-slate-500">{modeLabel}</span>
+        )}
       </div>
       {isEmpty ? (
         <p className="mt-4 text-sm text-slate-400">半荘を入力するとグラフが表示されます。</p>

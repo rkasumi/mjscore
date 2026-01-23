@@ -18,6 +18,22 @@ import { decodeSnapshot, snapshotToSession, type SnapshotV1 } from "./lib/snapsh
 import { useSessionStore } from "./lib/useSessionStore";
 
 const FIXED_NAMES = ["プレイヤー1", "プレイヤー2"] as const;
+const readSecondsEnv = (value: string | undefined, fallbackSeconds: number): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallbackSeconds;
+  }
+  return parsed;
+};
+const DISPLAY_REFRESH_INTERVAL_SEC = readSecondsEnv(
+  import.meta.env.VITE_DISPLAY_REFRESH_INTERVAL_SEC,
+  30 * 60,
+);
+const DISPLAY_REFRESH_DURATION_SEC = readSecondsEnv(
+  import.meta.env.VITE_DISPLAY_REFRESH_DURATION_SEC,
+  5,
+);
+const DISPLAY_GRAPH_ROTATE_SEC = readSecondsEnv(import.meta.env.VITE_DISPLAY_GRAPH_ROTATE_SEC, 60);
 
 type SnapshotState = {
   encoded: string | null;
@@ -134,6 +150,7 @@ const App = () => {
     const value = params.get("display") ?? params.get("mode") ?? "";
     return value === "1" || value.toLowerCase() === "true" || value === "display";
   }, []);
+  const displayMode = snapshotMode ? false : queryDisplayMode;
   const inviteUrl = import.meta.env.VITE_INVITE_URL ?? "";
   const inviteImageSrc = "/invite.png";
 
@@ -173,6 +190,7 @@ const App = () => {
   }, [normalizedSession]);
   const [seatPlayerIds, setSeatPlayerIds] = useState<string[]>([]);
   const [handSeatIds, setHandSeatIds] = useState<string[]>([]);
+  const [displayRefreshActive, setDisplayRefreshActive] = useState(false);
 
   useEffect(() => {
     if (!normalizedSession) {
@@ -208,6 +226,36 @@ const App = () => {
       setHandSeatIds(editingHand.seats.map((seat) => seat.playerId));
     }
   }, [editingHand]);
+
+  useEffect(() => {
+    if (!displayMode) {
+      setDisplayRefreshActive(false);
+      return;
+    }
+    if (DISPLAY_REFRESH_INTERVAL_SEC <= 0 || DISPLAY_REFRESH_DURATION_SEC <= 0) {
+      setDisplayRefreshActive(false);
+      return;
+    }
+    let timeoutId: number | null = null;
+    const triggerRefresh = () => {
+      setDisplayRefreshActive(true);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(
+        () => setDisplayRefreshActive(false),
+        DISPLAY_REFRESH_DURATION_SEC * 1000,
+      );
+    };
+    const intervalId = window.setInterval(triggerRefresh, DISPLAY_REFRESH_INTERVAL_SEC * 1000);
+    return () => {
+      window.clearInterval(intervalId);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      setDisplayRefreshActive(false);
+    };
+  }, [displayMode]);
 
   const handleToggleSeat = (playerId: string) => {
     setSeatPlayerIds((prev) => {
@@ -365,7 +413,6 @@ const App = () => {
       setActivePanel((prev) => (prev === panel ? null : panel));
     };
 
-  const displayMode = snapshotMode ? false : queryDisplayMode;
   const showPanels = !snapshotError;
   const panelTitleId = activePanel ? `panel-title-${activePanel}` : "panel-title";
 
@@ -494,6 +541,9 @@ const App = () => {
                 players={normalizedSession?.players ?? []}
                 aggregate={aggregate}
                 displayMode={displayMode}
+                graphRotateIntervalMs={
+                  displayMode ? DISPLAY_GRAPH_ROTATE_SEC * 1000 : undefined
+                }
               />
               <SummaryPanel
                 aggregate={aggregate}
@@ -710,6 +760,14 @@ const App = () => {
             </div>
           ) : null}
         </>
+      ) : null}
+      {displayMode ? (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none fixed inset-0 z-50 bg-black transition-opacity duration-700 ${
+            displayRefreshActive ? "opacity-95" : "opacity-0"
+          }`}
+        />
       ) : null}
     </div>
   );

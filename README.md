@@ -9,6 +9,16 @@ pnpm build
 pnpm -s check
 ```
 
+## Display mode (TV)
+
+Display mode is enabled when the query parameter includes `display=1`, `display=true`, or `display=display`.
+
+Optional SPA build-time settings (seconds):
+
+- `VITE_DISPLAY_REFRESH_INTERVAL_SEC` (default: `1800`) - how often the dark overlay appears
+- `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
+- `VITE_DISPLAY_GRAPH_ROTATE_SEC` (default: `60`) - graph rotation interval in display mode
+
 ## Production deployment (nginx + Podman compose)
 
 ### 1) Build and deploy the SPA
