@@ -18,6 +18,7 @@ type Props = {
 };
 
 type OrderedSeat = {
+  playerId: string;
   rank: number;
   name: string;
   score: number;
@@ -32,6 +33,7 @@ const buildOrderedSeats = (players: Player[], hand: Hand): OrderedSeat[] => {
     .map((seat) => {
       const result = pointMap.get(seat.playerId);
       return {
+        playerId: seat.playerId,
         rank: result?.rank ?? 4,
         name: findName(players, seat.playerId),
         score: seat.score,
@@ -97,7 +99,7 @@ export const HandHistory = ({
                         {readOnly ? hands.length - index : index + 1}
                       </td>
                       {ordered.map((seat) => (
-                        <td key={`${hand.id}-${seat.rank}`} className="py-2 pr-3">
+                        <td key={`${hand.id}-${seat.playerId}`} className="py-2 pr-3">
                           <div className="text-slate-900">{seat.name}</div>
                           <div className="text-xs text-slate-500">
                             {formatScore(seat.score)} / {formatPoint(seat.point)}

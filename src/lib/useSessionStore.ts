@@ -51,7 +51,7 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
   const [lastError, setLastError] = useState<string | null>(null);
   const [lostChanges, setLostChanges] = useState(false);
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
   const sync = useMemo(() => new HttpPollingSessionSync(apiBaseUrl), [apiBaseUrl]);
   const versionRef = useRef<number | null>(meta?.version ?? null);
   const metaRef = useRef<SessionMeta | null>(meta);

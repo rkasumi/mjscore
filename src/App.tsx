@@ -189,7 +189,6 @@ const App = () => {
     return normalizedSession.players.slice(0, 4).map((player) => player.id);
   }, [normalizedSession]);
   const [seatPlayerIds, setSeatPlayerIds] = useState<string[]>([]);
-  const [handSeatIds, setHandSeatIds] = useState<string[]>([]);
   const [displayRefreshActive, setDisplayRefreshActive] = useState(false);
 
   useEffect(() => {
@@ -206,26 +205,6 @@ const App = () => {
       return defaultSeatIds;
     });
   }, [defaultSeatIds, normalizedSession]);
-  useEffect(() => {
-    if (!normalizedSession) {
-      setHandSeatIds([]);
-      return;
-    }
-    setHandSeatIds((prev) => {
-      const validIds = new Set(normalizedSession.players.map((player) => player.id));
-      const filtered = prev.filter((id) => validIds.has(id));
-      if (filtered.length === 4) {
-        return filtered;
-      }
-      return defaultSeatIds;
-    });
-  }, [defaultSeatIds, normalizedSession]);
-
-  useEffect(() => {
-    if (editingHand?.seats.length === 4) {
-      setHandSeatIds(editingHand.seats.map((seat) => seat.playerId));
-    }
-  }, [editingHand]);
 
   useEffect(() => {
     if (!displayMode) {
@@ -259,17 +238,6 @@ const App = () => {
 
   const handleToggleSeat = (playerId: string) => {
     setSeatPlayerIds((prev) => {
-      if (prev.includes(playerId)) {
-        return prev.filter((id) => id !== playerId);
-      }
-      if (prev.length >= 4) {
-        return prev;
-      }
-      return [...prev, playerId];
-    });
-  };
-  const handleToggleHandSeat = (playerId: string) => {
-    setHandSeatIds((prev) => {
       if (prev.includes(playerId)) {
         return prev.filter((id) => id !== playerId);
       }
@@ -726,10 +694,8 @@ const App = () => {
                     {activePanel === "handInput" ? (
                       normalizedSession ? (
                         <HandForm
-                          players={normalizedSession.players}
+                          session={normalizedSession}
                           editingHand={editingHand}
-                          seatPlayerIds={handSeatIds}
-                          onToggleSeat={handleToggleHandSeat}
                           onSave={(seats, editingId) => {
                             handleSaveHand(seats, editingId);
                             if (!editingId) {

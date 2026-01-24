@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { NumericFormat } from "react-number-format";
 
-import type { Hand, HandSeat, Player } from "../../shared/types";
+import type { Hand, HandSeat, Player, Session } from "../../shared/types";
+import { SeatPicker } from "./SeatPicker";
+import {
+  buildSeatMapFromOrder,
+  seatMapToOrderedIds,
+  WIND_LABELS,
+  WIND_ORDER,
+  type SeatMap,
+} from "../lib/seatPicker";
 
 type SeatInput = {
   playerId: string;
@@ -10,10 +18,8 @@ type SeatInput = {
 };
 
 type Props = {
-  players: Player[];
+  session: Session;
   editingHand: Hand | null;
-  seatPlayerIds: string[];
-  onToggleSeat: (playerId: string) => void;
   onSave: (seats: HandSeat[], editingId?: string) => void;
   onCancelEdit: () => void;
 };
@@ -37,16 +43,17 @@ const parseScore = (value: string): number | null => {
 };
 
 export const HandForm = ({
-  players,
+  session,
   editingHand,
-  seatPlayerIds,
-  onToggleSeat,
   onSave,
   onCancelEdit,
 }: Props) => {
+  const players = session.players;
+  const sessionId = session.id;
   const [seats, setSeats] = useState<SeatInput[]>(buildSeats(players, editingHand));
   const [error, setError] = useState<string | null>(null);
   const [autoSuggestEnabled, setAutoSuggestEnabled] = useState(true);
+  const [seatMap, setSeatMap] = useState<SeatMap | null>(null);
 
   useEffect(() => {
     setSeats(buildSeats(players, editingHand));
@@ -54,10 +61,38 @@ export const HandForm = ({
     setAutoSuggestEnabled(true);
   }, [editingHand, players]);
 
-  const selectedSeats = useMemo(
-    () => seats.filter((seat) => seatPlayerIds.includes(seat.playerId)),
-    [seatPlayerIds, seats],
-  );
+  const editingSeatIds = useMemo(() => {
+    if (!editingHand || editingHand.seats.length !== 4) {
+      return null;
+    }
+    return editingHand.seats.map((seat) => seat.playerId);
+  }, [editingHand]);
+  const forcedSeatMap = useMemo(() => {
+    if (!editingSeatIds) {
+      return null;
+    }
+    return buildSeatMapFromOrder(editingSeatIds);
+  }, [editingSeatIds]);
+
+  const orderedSeatIds = useMemo(() => seatMapToOrderedIds(seatMap), [seatMap]);
+  const selectedSeats = useMemo(() => {
+    return orderedSeatIds
+      .map((id) => seats.find((seat) => seat.playerId === id) ?? null)
+      .filter((seat): seat is SeatInput => Boolean(seat));
+  }, [orderedSeatIds, seats]);
+  const seatByWind = useMemo(() => {
+    if (!seatMap || orderedSeatIds.length !== 4) {
+      return null;
+    }
+    const map = new Map<string, SeatInput>();
+    seats.forEach((seat) => map.set(seat.playerId, seat));
+    return {
+      E: map.get(seatMap.E) ?? null,
+      S: map.get(seatMap.S) ?? null,
+      W: map.get(seatMap.W) ?? null,
+      N: map.get(seatMap.N) ?? null,
+    };
+  }, [orderedSeatIds.length, seatMap, seats]);
 
   const parsedSelectedSeats = useMemo(
     () =>
@@ -80,7 +115,7 @@ export const HandForm = ({
   const remainingScore = 100000 - totalScore;
 
   const autoFillCandidate = useMemo(() => {
-    if (!autoSuggestEnabled || seatPlayerIds.length !== 4) {
+    if (!autoSuggestEnabled || orderedSeatIds.length !== 4) {
       return null;
     }
     const emptySeats = parsedSelectedSeats.filter(
@@ -96,14 +131,14 @@ export const HandForm = ({
       return null;
     }
     return { playerId: emptySeats[0].playerId, value: remaining };
-  }, [autoSuggestEnabled, parsedSelectedSeats, seatPlayerIds.length]);
+  }, [autoSuggestEnabled, orderedSeatIds, parsedSelectedSeats]);
 
   const validationMessage = useMemo(() => {
     if (players.length < 4) {
       return "プレイヤーを4人以上登録してください。";
     }
-    if (seatPlayerIds.length !== 4) {
-      return "参加者を4人選択してください。";
+    if (orderedSeatIds.length !== 4) {
+      return "席を決めてください。";
     }
     const effectiveFilled =
       filledSeats.length + (autoFillCandidate && filledSeats.length === 3 ? 1 : 0);
@@ -123,7 +158,7 @@ export const HandForm = ({
     autoFillCandidate,
     filledSeats,
     players.length,
-    seatPlayerIds.length,
+    orderedSeatIds,
     totalScore,
   ]);
 
@@ -164,7 +199,17 @@ export const HandForm = ({
 
   return (
     <div className="space-y-0.5">
-      <div className="flex flex-wrap items-center justify-between gap-0.5">
+      <SeatPicker
+        sessionId={sessionId}
+        players={players}
+        hands={session.hands}
+        forcedSeatMap={forcedSeatMap}
+        forcedPlayerIds={editingSeatIds}
+        onSeatMapChange={(nextSeatMap) => {
+          setSeatMap(nextSeatMap);
+        }}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-0.5 pt-2">
         <span className="text-[11px] text-slate-400">空欄は抜け番</span>
         {!autoSuggestEnabled ? (
           <button
@@ -176,80 +221,171 @@ export const HandForm = ({
           </button>
         ) : null}
       </div>
-      <div className="space-y-0">
-        <div className="flex flex-wrap gap-0.5">
-          {players.map((player) => {
-            const active = seatPlayerIds.includes(player.id);
-            return (
-              <button
-                key={player.id}
-                type="button"
-                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${
-                  active
-                    ? "bg-emerald-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-                onClick={() => onToggleSeat(player.id)}
-              >
-                {player.name}
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-[11px] text-slate-400">
-          参加者を4人ちょうど選択してください（{seatPlayerIds.length}/4）。
-        </p>
-      </div>
       <form className="space-y-1" onSubmit={handleSubmit}>
-        {selectedSeats.map((seat) => (
-          <div key={seat.playerId} className="space-y-0.5">
-            <div className="flex min-w-0 flex-nowrap items-center gap-2">
-              <div className="min-w-0 flex-1 truncate text-sm text-slate-700">
-                {seat.name}
-              </div>
-              <div className="flex w-28 items-center overflow-hidden rounded-2xl border border-slate-200 bg-white/80 text-base sm:w-32 md:w-40">
-                <NumericFormat
-                  allowNegative
-                  decimalScale={0}
-                  thousandSeparator={false}
-                  valueIsNumericString
-                  inputMode="text"
-                  className="score-input min-h-[34px] w-full bg-transparent px-2 py-1.5 text-base outline-none"
-                  value={seat.score}
-                  placeholder={
-                    autoFillCandidate && autoFillCandidate.playerId === seat.playerId
-                      ? String(autoFillCandidate.value)
-                      : ""
-                  }
-                  onValueChange={(values) =>
-                    handleScoreChange(seat.playerId, values.formattedValue)
-                  }
-                />
-                <span className="border-l border-slate-200 px-2 py-1 text-slate-500">00</span>
-              </div>
-            </div>
-            {autoFillCandidate && autoFillCandidate.playerId === seat.playerId ? (
-              <div className="flex min-h-[12px] flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                <span>残り候補: {autoFillCandidate.value * 100} 点</span>
-                <button
-                  type="button"
-                  className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-200"
-                  onClick={() => {
-                    setSeats((prev) =>
-                      prev.map((item) =>
-                        item.playerId === seat.playerId
-                          ? { ...item, score: String(autoFillCandidate.value) }
-                          : item,
-                      ),
-                    );
-                  }}
+        {seatByWind ? (
+          <div className="grid grid-cols-2 gap-2">
+            {(["W", "N", "S", "E"] as const).map((wind) => {
+              const seat = seatByWind[wind];
+              if (!seat) {
+                return null;
+              }
+              const isFull = wind === "W" || wind === "E";
+              const isHalf = wind === "N" || wind === "S";
+              return (
+                <div
+                  key={wind}
+                  className={`space-y-0.5 rounded-2xl border border-slate-200 bg-white/80 p-3 ${
+                    isFull ? "col-span-2" : ""
+                  }`}
                 >
-                  残りを入力
-                </button>
-              </div>
-            ) : null}
+                  {isHalf ? (
+                    <>
+                      <div className="flex items-center gap-2 text-sm text-slate-700">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                          {WIND_LABELS[wind]}
+                        </span>
+                        <span className="text-xs leading-snug break-words">{seat.name}</span>
+                      </div>
+                      <div className="flex w-full items-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-base">
+                        <NumericFormat
+                          allowNegative
+                          decimalScale={0}
+                          thousandSeparator={false}
+                          valueIsNumericString
+                          inputMode="text"
+                          className="score-input min-h-[34px] w-full bg-transparent px-2 py-1.5 text-base outline-none"
+                          value={seat.score}
+                          placeholder={
+                            autoFillCandidate && autoFillCandidate.playerId === seat.playerId
+                              ? String(autoFillCandidate.value)
+                              : ""
+                          }
+                          onValueChange={(values) =>
+                            handleScoreChange(seat.playerId, values.formattedValue)
+                          }
+                        />
+                        <span className="border-l border-slate-200 px-2 py-1 text-slate-500">
+                          00
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex min-w-0 flex-nowrap items-center gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-700">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                          {WIND_LABELS[wind]}
+                        </span>
+                        <span className="min-w-0 truncate text-sm">{seat.name}</span>
+                      </div>
+                      <div className="flex w-28 items-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-base sm:w-32 md:w-40">
+                        <NumericFormat
+                          allowNegative
+                          decimalScale={0}
+                          thousandSeparator={false}
+                          valueIsNumericString
+                          inputMode="text"
+                          className="score-input min-h-[34px] w-full bg-transparent px-2 py-1.5 text-base outline-none"
+                          value={seat.score}
+                          placeholder={
+                            autoFillCandidate && autoFillCandidate.playerId === seat.playerId
+                              ? String(autoFillCandidate.value)
+                              : ""
+                          }
+                          onValueChange={(values) =>
+                            handleScoreChange(seat.playerId, values.formattedValue)
+                          }
+                        />
+                        <span className="border-l border-slate-200 px-2 py-1 text-slate-500">
+                          00
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {autoFillCandidate && autoFillCandidate.playerId === seat.playerId ? (
+                    <div className="flex min-h-[12px] flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                      <span>残り候補: {autoFillCandidate.value * 100} 点</span>
+                      <button
+                        type="button"
+                        className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-200"
+                        onClick={() => {
+                          setSeats((prev) =>
+                            prev.map((item) =>
+                              item.playerId === seat.playerId
+                                ? { ...item, score: String(autoFillCandidate.value) }
+                                : item,
+                            ),
+                          );
+                        }}
+                      >
+                        残りを入力
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-        ))}
+        ) : (
+          selectedSeats.map((seat) => {
+            const wind = seatMap
+              ? WIND_ORDER.find((key) => seatMap[key] === seat.playerId) ?? null
+              : null;
+            return (
+              <div key={seat.playerId} className="space-y-0.5">
+                <div className="flex min-w-0 flex-nowrap items-center gap-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-700">
+                    {wind ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                        {WIND_LABELS[wind]}
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 truncate">{seat.name}</span>
+                  </div>
+                  <div className="flex w-28 items-center overflow-hidden rounded-2xl border border-slate-200 bg-white/80 text-base sm:w-32 md:w-40">
+                    <NumericFormat
+                      allowNegative
+                      decimalScale={0}
+                      thousandSeparator={false}
+                      valueIsNumericString
+                      inputMode="text"
+                      className="score-input min-h-[34px] w-full bg-transparent px-2 py-1.5 text-base outline-none"
+                      value={seat.score}
+                      placeholder={
+                        autoFillCandidate && autoFillCandidate.playerId === seat.playerId
+                          ? String(autoFillCandidate.value)
+                          : ""
+                      }
+                      onValueChange={(values) =>
+                        handleScoreChange(seat.playerId, values.formattedValue)
+                      }
+                    />
+                    <span className="border-l border-slate-200 px-2 py-1 text-slate-500">00</span>
+                  </div>
+                </div>
+                {autoFillCandidate && autoFillCandidate.playerId === seat.playerId ? (
+                  <div className="flex min-h-[12px] flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                    <span>残り候補: {autoFillCandidate.value * 100} 点</span>
+                    <button
+                      type="button"
+                      className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-200"
+                      onClick={() => {
+                        setSeats((prev) =>
+                          prev.map((item) =>
+                            item.playerId === seat.playerId
+                              ? { ...item, score: String(autoFillCandidate.value) }
+                              : item,
+                          ),
+                        );
+                      }}
+                    >
+                      残りを入力
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
         <div className="flex flex-col gap-0.5 text-[11px] md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-1.5 text-slate-500">
             <span>合計: {totalScore} 点</span>
