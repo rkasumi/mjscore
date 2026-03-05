@@ -13,7 +13,6 @@ import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
 import { buildSessionAggregate } from "./lib/aggregation";
 import { createId } from "./lib/id";
-import { calculateBaseOnlyConditions } from "./lib/reversal";
 import { decodeSnapshot, snapshotToSession, type SnapshotV1 } from "./lib/snapshot";
 import { useSessionStore } from "./lib/useSessionStore";
 
@@ -247,13 +246,6 @@ const App = () => {
       return [...prev, playerId];
     });
   };
-  const baseOnlyConditions = useMemo(() => {
-    if (!normalizedSession || seatPlayerIds.length !== 4) {
-      return [];
-    }
-    return calculateBaseOnlyConditions(normalizedSession, seatPlayerIds);
-  }, [normalizedSession, seatPlayerIds]);
-
   // normalizedSession computed above for consistent usage
   useEffect(() => {
     if (snapshotMode) {
@@ -715,7 +707,8 @@ const App = () => {
                         players={normalizedSession?.players ?? []}
                         seatPlayerIds={seatPlayerIds}
                         onToggleSeat={handleToggleSeat}
-                        baseOnlyConditions={baseOnlyConditions}
+                        session={normalizedSession}
+                        aggregate={aggregate}
                         note="同点パターンの列挙は未対応です。"
                       />
                     ) : null}

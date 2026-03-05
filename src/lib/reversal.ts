@@ -6,7 +6,6 @@ import {
   ORIGIN_SCORE,
   RANK_COSTS,
   RANK_POINTS,
-  ceilTo100,
   buildConditionRequirements,
   buildRankGroups,
   buildTotalPoints,
@@ -28,12 +27,8 @@ export type ConditionScenario = {
 export type ReverseConditionResult = {
   overallToFirstTopN: ConditionScenario[];
   overallOneUpTopN: ConditionScenario[];
-};
-
-export type BaseOnlyCondition = {
-  playerId: string;
-  needGaps: ConditionNeedGap[];
-  needScoreMin: number | null;
+  maxRankToFirst: Map<string, number>;
+  maxRankOneUp: Map<string, number>;
 };
 
 export type ReverseConditionOptions = {
@@ -48,7 +43,7 @@ export const calculateReverseConditions = (
   options: ReverseConditionOptions = {},
 ): ReverseConditionResult => {
   if (seatPlayerIds.length !== 4) {
-    return { overallToFirstTopN: [], overallOneUpTopN: [] };
+    return { overallToFirstTopN: [], overallOneUpTopN: [], maxRankToFirst: new Map(), maxRankOneUp: new Map() };
   }
 
   const topN = options.topN ?? DEFAULT_TOP_N;
@@ -156,53 +151,62 @@ export const calculateReverseConditions = (
     return result;
   };
 
+  const buildMaxRank = (map: Map<string, ConditionScenario[]>): Map<string, number> => {
+    const result = new Map<string, number>();
+    map.forEach((scenarios, playerId) => {
+      if (scenarios.length > 0) {
+        result.set(playerId, Math.max(...scenarios.map((s) => s.rank)));
+      }
+    });
+    return result;
+  };
+
   return {
     overallToFirstTopN: pickTopN(overallToFirstMap),
     overallOneUpTopN: pickTopN(overallOneUpMap),
+    maxRankToFirst: buildMaxRank(overallToFirstMap),
+    maxRankOneUp: buildMaxRank(overallOneUpMap),
   };
 };
 
-export const calculateBaseOnlyConditions = (
-  session: Session,
-  seatPlayerIds: string[],
-): BaseOnlyCondition[] => {
-  if (seatPlayerIds.length !== 4) {
-    return [];
+export const buildNaturalLanguageSummary = ({
+  scenarios,
+  targetRank,
+  playerMap,
+}: {
+  scenarios: ConditionScenario[];
+  targetRank: number;
+  playerMap: Map<string, string>;
+}): { text: string; level: "easy" | "hard" | "impossible" } => {
+  if (scenarios.length === 0) {
+    return { text: "逆転不可", level: "impossible" };
   }
-  const totals = buildTotalPoints(session);
-  const seatSet = new Set(seatPlayerIds);
-  const allTargets = session.players.map((player) => player.id);
 
-  return seatPlayerIds.map((playerId) => {
-    const totalP = totals.get(playerId) ?? 0;
-    const needGaps: ConditionNeedGap[] = [];
-    let needScoreMin = 0;
+  const sorted = [...scenarios].sort((a, b) => a.difficulty - b.difficulty);
+  const easiest = sorted[0];
+  if (!easiest) {
+    return { text: "逆転不可", level: "impossible" };
+  }
+  const maxRank = Math.max(...scenarios.map((s) => s.rank));
 
-    allTargets.forEach((targetId) => {
-      if (targetId === playerId) {
-        return;
-      }
-      const totalQ = totals.get(targetId) ?? 0;
-      const diff = totalQ - totalP;
-
-      if (seatSet.has(targetId)) {
-        const needGapRaw = 1000 * diff;
-        if (needGapRaw > 0) {
-          needGaps.push({ targetId, gap: ceilTo100(needGapRaw) });
-        }
-        return;
-      }
-
-      const needScoreMinRaw = ORIGIN_SCORE + 1000 * diff;
-      if (needScoreMinRaw > ORIGIN_SCORE) {
-        needScoreMin = Math.max(needScoreMin, ceilTo100(needScoreMinRaw));
-      }
-    });
-
+  if (easiest.needGaps.length === 0 && !easiest.needScoreMin) {
     return {
-      playerId,
-      needGaps: needGaps.sort((a, b) => b.gap - a.gap),
-      needScoreMin: needScoreMin > 0 ? needScoreMin : null,
+      text: `${maxRank}着以上なら総合${targetRank}位確定`,
+      level: "easy",
     };
-  });
+  }
+
+  const topGap = easiest.needGaps[0];
+  if (topGap) {
+    const targetName = playerMap.get(topGap.targetId) ?? "不明";
+    return {
+      text: `${easiest.rank}着で${targetName}に${topGap.gap.toLocaleString()}点差つければ総合${targetRank}位`,
+      level: "hard",
+    };
+  }
+
+  return {
+    text: `${easiest.rank}着で${easiest.needScoreMin?.toLocaleString()}点以上なら総合${targetRank}位`,
+    level: "hard",
+  };
 };
