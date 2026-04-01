@@ -24,15 +24,22 @@ Optional SPA build-time settings (seconds):
 ### 1) Build and deploy the SPA
 
 ```sh
-pnpm install
-VITE_API_BASE_URL=/api pnpm build:web
+./scripts/deploy.sh
 ```
 
-Copy the built assets to the web root:
+Default target:
+
+- host: `rkasumi`
+- path: `/path/to/web-root`
+- `VITE_API_BASE_URL`: `/api`
+
+Override example:
 
 ```sh
-sudo mkdir -p /path/to/web-root
-sudo rsync -a --delete dist/ /path/to/web-root
+TARGET_HOST=other-host \
+TARGET_PATH=/path/to/web-root \
+VITE_API_BASE_URL=/api \
+./scripts/deploy.sh
 ```
 
 ### 2) Prepare the API container (Docker)
