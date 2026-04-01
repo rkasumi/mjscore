@@ -19,7 +19,7 @@ Optional SPA build-time settings (seconds):
 - `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
 - `VITE_DISPLAY_GRAPH_ROTATE_SEC` (default: `60`) - graph rotation interval in display mode
 
-## Production deployment (nginx + Podman compose)
+## Production deployment (ops nginx + Docker Compose)
 
 ### 1) Build and deploy the SPA
 
@@ -35,7 +35,7 @@ sudo mkdir -p /path/to/web-root
 sudo rsync -a --delete dist/ /path/to/web-root
 ```
 
-### 2) Prepare the API container (Podman)
+### 2) Prepare the API container (Docker)
 
 On the server, clone the repository to `/path/to/private`:
 
@@ -62,7 +62,7 @@ Initial start (build + run):
 
 ```sh
 cd /path/to/private
-podman-compose up -d --build
+docker compose up -d --build
 ```
 
 For updates (pull + rebuild + restart):
@@ -70,23 +70,24 @@ For updates (pull + rebuild + restart):
 ```sh
 cd /path/to/private
 git pull
-podman-compose up -d --build
+docker compose up -d --build
 ```
 
 Stop it when needed:
 
 ```sh
-podman-compose down
+docker compose down
 ```
 
-### 3) nginx configuration (SPA + /api proxy)
+### 3) nginx configuration (managed by ops)
 
-Copy `deploy/nginx/mjscore.conf` to `/etc/nginx/conf.d/mjscore.conf` and reload:
+On the VPS, the nginx config is managed in the `ops` repository, not from this repository.
 
-```sh
-sudo cp /path/to/private /etc/nginx/conf.d/mjscore.conf
-sudo nginx -t && sudo systemctl reload nginx
-```
+- source of truth: `ops/server/nginx/conf.d/example.com.conf`
+- current SPA web root: `/path/to/web-root`
+- current API upstream: `http://127.0.0.1:18080`
+
+`deploy/nginx/mjscore.conf` is a local reference/example only. Do not copy it over the VPS nginx config unless you are intentionally updating the ops-managed configuration as well.
 
 Note: the API exposes `/session` and `/health`. The nginx `/api/` proxy strips the prefix, so `/api/session` maps to the API `/session` without rewrites.
 
@@ -107,5 +108,5 @@ curl -f http://127.0.0.1:18080/health
 API logs:
 
 ```sh
-podman logs -f mjscore-api
+docker logs -f mjscore-api
 ```

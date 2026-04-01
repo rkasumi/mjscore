@@ -29,4 +29,4 @@
 ## Repo Notes
 - TypeScript strict、any 禁止。UI は Tailwind のみ
 - 既存フォルダ構成・export 方針は維持する
-- デプロイ: フロントは dist を scp 配置、バックは git pull 後に `podman-compose up -d --build`
+- デプロイ: フロントは dist を scp 配置、バックは git pull 後に `docker compose up -d --build`
