@@ -12,8 +12,7 @@ type CopyState = "idle" | "success" | "error";
 const buildShareUrl = (session: Session): string => {
   const snapshot = buildSnapshot(session);
   const encoded = encodeSnapshot(snapshot);
-  const base = `${window.location.origin}${window.location.pathname}${window.location.search}`;
-  return `${base}#s=${encoded}`;
+  return `${window.location.origin}/share/${encodeURIComponent(encoded)}`;
 };
 
 export const SnapshotShare = ({ session }: Props) => {

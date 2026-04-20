@@ -13,7 +13,12 @@ import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
 import { buildSessionAggregate } from "./lib/aggregation";
 import { createId } from "./lib/id";
-import { decodeSnapshot, snapshotToSession, type SnapshotV1 } from "./lib/snapshot";
+import {
+  decodeSnapshot,
+  getSnapshotPathEncoded,
+  snapshotToSession,
+  type SnapshotV1,
+} from "./lib/snapshot";
 import { useSessionStore } from "./lib/useSessionStore";
 
 const FIXED_NAMES = ["プレイヤー1", "プレイヤー2"] as const;
@@ -98,6 +103,11 @@ const canRemovePlayer = (session: Session, playerId: string): boolean =>
   !session.hands.some((hand) => hand.seats.some((seat) => seat.playerId === playerId));
 
 const parseSnapshotFromLocation = (): SnapshotState => {
+  const pathEncoded = getSnapshotPathEncoded(window.location.pathname);
+  if (pathEncoded) {
+    const { snapshot, error } = decodeSnapshot(pathEncoded);
+    return { encoded: pathEncoded, snapshot, error };
+  }
   const hash = window.location.hash.startsWith("#")
     ? window.location.hash.slice(1)
     : window.location.hash;

@@ -143,6 +143,18 @@ export const decodeSnapshot = (
   }
 };
 
+export const getSnapshotPathEncoded = (pathname: string): string | null => {
+  const match = pathname.match(/^\/share\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+};
+
 export const snapshotToSession = (snapshot: SnapshotV1): Session => {
   const baseDate = new Date(`${snapshot.d}T00:00:00Z`);
   const baseTime = Number.isNaN(baseDate.getTime()) ? Date.now() : baseDate.getTime();
