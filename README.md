@@ -17,7 +17,6 @@ Optional SPA build-time settings (seconds):
 
 - `VITE_DISPLAY_REFRESH_INTERVAL_SEC` (default: `1800`) - how often the dark overlay appears
 - `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
-- `VITE_DISPLAY_GRAPH_ROTATE_SEC` (default: `60`) - graph rotation interval in display mode
 
 ## Production deployment (ops nginx + Docker Compose)
 

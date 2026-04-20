@@ -18,7 +18,6 @@ export type GraphPoint = {
 export type SessionAggregate = {
   players: PlayerAggregate[];
   cumulativeSeries: GraphPoint[];
-  handSeries: GraphPoint[];
   handsCount: number;
 };
 
@@ -29,7 +28,6 @@ export const buildSessionAggregate = (session: Session): SessionAggregate => {
   const rankTotals = new Map<string, number>();
   const handCounts = new Map<string, number>();
   const cumulativeSeries: GraphPoint[] = [];
-  const handSeries: GraphPoint[] = [];
 
   const playerIds = session.players.map((player) => player.id);
   const currentTotals = new Map<string, number>();
@@ -45,7 +43,6 @@ export const buildSessionAggregate = (session: Session): SessionAggregate => {
     basePoint[playerId] = 0;
   }
   cumulativeSeries.push({ ...basePoint });
-  handSeries.push({ ...basePoint });
 
   session.hands.forEach((hand, index) => {
     const results = calculateHandResults(hand.seats);
@@ -77,7 +74,6 @@ export const buildSessionAggregate = (session: Session): SessionAggregate => {
     }
 
     cumulativeSeries.push(cumulativePoint);
-    handSeries.push(handPoint);
   });
 
   const playerAggregates = session.players.map((player) => {
@@ -102,7 +98,6 @@ export const buildSessionAggregate = (session: Session): SessionAggregate => {
   return {
     players: sortedByTotal,
     cumulativeSeries,
-    handSeries,
     handsCount: session.hands.length,
   };
 };

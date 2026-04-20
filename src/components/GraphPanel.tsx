@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   CartesianGrid,
   Line,
@@ -18,7 +18,6 @@ type Props = {
   players: Player[];
   aggregate: SessionAggregate | null;
   displayMode?: boolean;
-  graphRotateIntervalMs?: number;
 };
 
 const COLORS = [
@@ -32,38 +31,8 @@ const COLORS = [
 
 const getPlayerColor = (index: number): string => COLORS[index] ?? "#dc2626";
 
-export const GraphPanel = ({
-  players,
-  aggregate,
-  displayMode = false,
-  graphRotateIntervalMs,
-}: Props) => {
-  const [mode, setMode] = useState<"cumulative" | "hand">("cumulative");
-  const [displayModeMode, setDisplayModeMode] = useState<"cumulative" | "hand">("cumulative");
-
-  useEffect(() => {
-    if (!displayMode || !graphRotateIntervalMs || graphRotateIntervalMs <= 0) {
-      setDisplayModeMode("cumulative");
-      return;
-    }
-    const modes: Array<"cumulative" | "hand"> = ["cumulative", "hand"];
-    let index = 0;
-    setDisplayModeMode(modes[index]);
-    const intervalId = window.setInterval(() => {
-      index = (index + 1) % modes.length;
-      setDisplayModeMode(modes[index]);
-    }, graphRotateIntervalMs);
-    return () => window.clearInterval(intervalId);
-  }, [displayMode, graphRotateIntervalMs]);
-
-  const currentMode = displayMode ? displayModeMode : mode;
-  const series = useMemo(() => {
-    if (!aggregate) {
-      return [];
-    }
-    return currentMode === "cumulative" ? aggregate.cumulativeSeries : aggregate.handSeries;
-  }, [aggregate, currentMode]);
-  const modeLabel = currentMode === "cumulative" ? "累積pt" : "半荘pt";
+export const GraphPanel = ({ players, aggregate, displayMode = false }: Props) => {
+  const series = useMemo(() => aggregate?.cumulativeSeries ?? [], [aggregate]);
 
   const yAxis = useMemo(() => {
     if (!series.length) {
@@ -102,34 +71,7 @@ export const GraphPanel = ({
         <h2 className={`section-title ${displayMode ? "text-3xl md:text-4xl" : ""}`}>
           成績グラフ
         </h2>
-        {!displayMode ? (
-          <div className="flex gap-2 rounded-2xl bg-slate-100 p-1 text-xs">
-            <button
-              type="button"
-              className={`rounded-2xl px-3 py-1.5 transition ${
-                mode === "cumulative"
-                  ? "bg-rose-600 text-white"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-              onClick={() => setMode("cumulative")}
-            >
-              累積pt
-            </button>
-            <button
-              type="button"
-              className={`rounded-2xl px-3 py-1.5 transition ${
-                mode === "hand"
-                  ? "bg-rose-600 text-white"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-              onClick={() => setMode("hand")}
-            >
-              半荘pt
-            </button>
-          </div>
-        ) : (
-          <span className="text-sm font-semibold text-slate-500">{modeLabel}</span>
-        )}
+        <span className="text-sm font-semibold text-slate-500">累積pt</span>
       </div>
       {isEmpty ? (
         <p className="mt-4 text-sm text-slate-400">半荘を入力するとグラフが表示されます。</p>

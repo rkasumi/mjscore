@@ -37,7 +37,6 @@ const DISPLAY_REFRESH_DURATION_SEC = readSecondsEnv(
   import.meta.env.VITE_DISPLAY_REFRESH_DURATION_SEC,
   5,
 );
-const DISPLAY_GRAPH_ROTATE_SEC = readSecondsEnv(import.meta.env.VITE_DISPLAY_GRAPH_ROTATE_SEC, 60);
 
 type SnapshotState = {
   encoded: string | null;
@@ -511,9 +510,6 @@ const App = () => {
                 players={normalizedSession?.players ?? []}
                 aggregate={aggregate}
                 displayMode={displayMode}
-                graphRotateIntervalMs={
-                  displayMode ? DISPLAY_GRAPH_ROTATE_SEC * 1000 : undefined
-                }
               />
               <SummaryPanel
                 aggregate={aggregate}
