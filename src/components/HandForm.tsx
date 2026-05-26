@@ -130,7 +130,7 @@ export const HandForm = ({
     if (!Number.isFinite(remaining) || remaining < 0) {
       return null;
     }
-    return { playerId: emptySeats[0].playerId, value: remaining };
+    return { playerId: emptySeats[0]!.playerId, value: remaining };
   }, [autoSuggestEnabled, orderedSeatIds, parsedSelectedSeats]);
 
   const validationMessage = useMemo(() => {

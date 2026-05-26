@@ -5,8 +5,14 @@ import type { Session } from "../shared/types.js";
 import { readEnvelope, writeEnvelope } from "./storage.js";
 
 const app = express();
+const corsOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-app.use(cors());
+if (corsOrigins.length > 0) {
+  app.use(cors({ origin: corsOrigins }));
+}
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {

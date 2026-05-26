@@ -18,6 +18,10 @@ Optional SPA build-time settings (seconds):
 - `VITE_DISPLAY_REFRESH_INTERVAL_SEC` (default: `1800`) - how often the dark overlay appears
 - `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
 
+The API is same-origin in production through nginx `/api/`, so CORS is disabled by default.
+For local cross-origin development, set `CORS_ORIGIN` to an explicit comma-separated allowlist.
+Tailwind remains on v3 because the existing PostCSS/Tailwind config is stable and the v4 migration is a separate CSS toolchain change.
+
 ## Production deployment (ops nginx + Docker Compose)
 
 ### 1) Build and deploy the SPA

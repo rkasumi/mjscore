@@ -86,6 +86,13 @@ export const SummaryPanel = ({
       };
     }
     const lastHand = session.hands[session.hands.length - 1];
+    if (!lastHand) {
+      return {
+        lastHandPointMap: new Map<string, number>(),
+        rankDeltaMap: new Map<string, number>(),
+        leaderTotal: 0,
+      };
+    }
     const lastResults = calculateHandResults(lastHand.seats);
     const lastHandPointMap = new Map<string, number>(
       lastResults.map((result) => [result.playerId, result.totalPoint]),

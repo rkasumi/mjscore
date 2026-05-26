@@ -70,7 +70,7 @@ export const calculateReverseConditions = (
     const bonusByPlayer = new Map<string, number>();
     const rankByPlayer = new Map<string, number>();
     order.forEach((playerId, index) => {
-      bonusByPlayer.set(playerId, RANK_POINTS[index]);
+      bonusByPlayer.set(playerId, RANK_POINTS[index] ?? 0);
       rankByPlayer.set(playerId, index + 1);
     });
 

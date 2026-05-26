@@ -8,6 +8,7 @@ import { PlayerManager } from "./components/PlayerManager";
 import { ReverseCondition } from "./components/ReverseCondition";
 import { ScoreTable } from "./components/ScoreTable";
 import { SessionControls } from "./components/SessionControls";
+import { SimpleFuPage } from "./components/SimpleFuPage";
 import { SnapshotShare } from "./components/SnapshotShare";
 import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
@@ -42,6 +43,15 @@ type SnapshotState = {
   encoded: string | null;
   snapshot: SnapshotV1 | null;
   error: string | null;
+};
+
+type ActivePanel = "controls" | "handInput" | "reverse" | "scoreTable";
+
+const getInitialPanel = (): ActivePanel | null => {
+  if (window.location.hash === "#score-table" || window.location.hash === "#fu-table") {
+    return "scoreTable";
+  }
+  return null;
 };
 
 const toJstDateString = (value: Date): string => {
@@ -119,7 +129,7 @@ const parseSnapshotFromLocation = (): SnapshotState => {
   return { encoded, snapshot, error };
 };
 
-const App = () => {
+const ScoreApp = () => {
   const [snapshotState, setSnapshotState] = useState<SnapshotState>(parseSnapshotFromLocation);
   useEffect(() => {
     const handleHashChange = () => setSnapshotState(parseSnapshotFromLocation());
@@ -147,9 +157,7 @@ const App = () => {
     disablePersistence: snapshotMode,
   });
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
-  const [activePanel, setActivePanel] = useState<
-    "controls" | "handInput" | "reverse" | "scoreTable" | null
-  >(null);
+  const [activePanel, setActivePanel] = useState<ActivePanel | null>(getInitialPanel);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
@@ -376,7 +384,7 @@ const App = () => {
   };
 
   const handleTogglePanel =
-    (panel: "controls" | "handInput" | "reverse" | "scoreTable") =>
+    (panel: ActivePanel) =>
     (event: MouseEvent<HTMLElement>) => {
       lastTriggerRef.current = event.currentTarget;
       setActivePanel((prev) => (prev === panel ? null : panel));
@@ -420,6 +428,9 @@ const App = () => {
       const current = document.activeElement as HTMLElement | null;
       const firstEl = focusable[0];
       const lastEl = focusable[focusable.length - 1];
+      if (!firstEl || !lastEl) {
+        return;
+      }
       if (event.shiftKey) {
         if (current === firstEl || !modalRef.current?.contains(current)) {
           event.preventDefault();
@@ -718,7 +729,11 @@ const App = () => {
                         note="同点パターンの列挙は未対応です。"
                       />
                     ) : null}
-                    {activePanel === "scoreTable" ? <ScoreTable /> : null}
+                    {activePanel === "scoreTable" ? (
+                      <ScoreTable
+                        initialMode={window.location.hash === "#fu-table" ? "fu" : "child"}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -736,6 +751,14 @@ const App = () => {
       ) : null}
     </div>
   );
+};
+
+const App = () => {
+  if (window.location.pathname.replace(/\/$/, "") === "/fu") {
+    return <SimpleFuPage />;
+  }
+
+  return <ScoreApp />;
 };
 
 export default App;

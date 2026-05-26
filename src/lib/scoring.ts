@@ -23,7 +23,7 @@ export const calculateHandResults = (seats: HandSeat[]): HandResult[] => {
 
   let cursor = 0;
   while (cursor < sorted.length) {
-    const score = sorted[cursor].score;
+    const score = sorted[cursor]!.score;
     const group = sorted.filter((item) => item.score === score);
     const groupStart = cursor + 1;
     const groupEnd = cursor + group.length;

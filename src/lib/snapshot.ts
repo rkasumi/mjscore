@@ -148,10 +148,14 @@ export const getSnapshotPathEncoded = (pathname: string): string | null => {
   if (!match) {
     return null;
   }
+  const encoded = match[1];
+  if (!encoded) {
+    return null;
+  }
   try {
-    return decodeURIComponent(match[1]);
+    return decodeURIComponent(encoded);
   } catch {
-    return match[1];
+    return encoded;
   }
 };
 
@@ -164,7 +168,7 @@ export const snapshotToSession = (snapshot: SnapshotV1): Session => {
     createdAt: new Date(baseTime + index * 60000).toISOString(),
     seats: seatIndexes.map((seatIndex, seatPos) => ({
       playerId: players[seatIndex]?.id ?? createId(),
-      score: scores[seatPos] * 100,
+      score: (scores[seatPos] ?? 0) * 100,
     })),
   }));
 

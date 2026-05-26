@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
 
+type ScoreTableMode = "child" | "parent" | "fu";
+
+type ScoreTableProps = {
+  initialMode?: ScoreTableMode;
+};
+
 const FU_VALUES = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
 const HAN_VALUES = [1, 2, 3, 4];
 
@@ -36,8 +42,8 @@ const buildParentCell = (fu: number, han: number): { ron: number; tsumo: number 
   return { ron, tsumo };
 };
 
-export const ScoreTable = () => {
-  const [mode, setMode] = useState<"child" | "parent" | "fu">("child");
+export const ScoreTable = ({ initialMode = "child" }: ScoreTableProps) => {
+  const [mode, setMode] = useState<ScoreTableMode>(initialMode);
   const highlightEnabled = true;
   const table = useMemo(() => {
     return FU_VALUES.map((fu) => {
@@ -87,6 +93,22 @@ export const ScoreTable = () => {
       </div>
       {mode === "fu" ? (
         <div className="space-y-3">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-emerald-900">簡易苻判定</div>
+                <div className="mt-1 text-xs leading-5 text-emerald-700">
+                  通常形の30符・40符・詳細計算推奨を最小タップで判定します。
+                </div>
+              </div>
+              <a
+                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                href="/fu"
+              >
+                判定ページへ
+              </a>
+            </div>
+          </div>
           <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
             <div className="flex items-center justify-between text-sm text-slate-600">
               <span className="font-semibold text-slate-800">基本符</span>
@@ -202,6 +224,9 @@ export const ScoreTable = () => {
                   </td>
                   {row.cells.map((cell, index) => {
                     const han = HAN_VALUES[index];
+                    if (han === undefined) {
+                      return null;
+                    }
                     const isFrequent =
                       highlightEnabled && row.fu >= 20 && row.fu <= 40 && han >= 1 && han <= 4;
                     const isLimit = isMangan(row.fu, han);
@@ -215,11 +240,11 @@ export const ScoreTable = () => {
                       key={`${row.fu}-${index}`}
                       className={`border-t border-slate-200 px-3 py-2 text-center text-slate-700 ${cellClass}`}
                     >
-                      {row.fu === 20 && HAN_VALUES[index] === 1 ? (
+                      {row.fu === 20 && han === 1 ? (
                         <div className="text-sm font-semibold text-slate-900">ピンフツモ</div>
-                      ) : row.fu === 25 && HAN_VALUES[index] === 1 ? (
+                      ) : row.fu === 25 && han === 1 ? (
                         <div className="text-sm font-semibold text-slate-900">チートイツ</div>
-                      ) : isMangan(row.fu, HAN_VALUES[index]) ? (
+                      ) : isMangan(row.fu, han) ? (
                         <div className="text-sm font-semibold text-slate-900">満貫</div>
                       ) : (
                         <>

@@ -25,7 +25,9 @@ const shuffleArray = <T,>(items: T[]): T[] => {
   const next = [...items];
   for (let i = next.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
+    const current = next[i]!;
+    next[i] = next[j]!;
+    next[j] = current;
   }
   return next;
 };
@@ -42,10 +44,10 @@ export const pickPlayersByMinCount = (
   const selected: string[] = [];
   let cursor = 0;
   while (selected.length < pickCount && cursor < ranked.length) {
-    const targetCount = ranked[cursor]?.count ?? 0;
+    const targetCount = ranked[cursor]!.count;
     const group: { id: string; count: number }[] = [];
-    while (cursor < ranked.length && ranked[cursor].count === targetCount) {
-      group.push(ranked[cursor]);
+    while (cursor < ranked.length && ranked[cursor]!.count === targetCount) {
+      group.push(ranked[cursor]!);
       cursor += 1;
     }
     const remaining = pickCount - selected.length;
