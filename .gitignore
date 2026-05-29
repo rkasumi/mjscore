@@ -1,6 +1,8 @@
 node_modules
 dist/
 server/dist
+playwright-report
+test-results
 .DS_Store
 .env
 .env.*
