@@ -146,7 +146,7 @@ const ScoreApp = () => {
   }, []);
   const displayMode = snapshotMode ? false : queryDisplayMode;
   const inviteUrl = import.meta.env.VITE_INVITE_URL ?? "";
-  const inviteImageSrc = "/invite.png";
+  const inviteImageSrc = import.meta.env.VITE_INVITE_IMAGE_SRC ?? "";
 
   const snapshotError = snapshotMode ? snapshotState.error : null;
   const normalizedSession = useMemo(() => {
@@ -458,11 +458,13 @@ const ScoreApp = () => {
           <div className="pointer-events-none fixed right-4 top-4 z-40">
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 shadow-sm">
               {inviteUrl ? <div className="text-right text-xs text-slate-500">{inviteUrl}</div> : null}
-              <img
-                src={inviteImageSrc}
-                alt="参加者アクセスQR"
-                className="h-20 w-20 rounded-md border border-slate-200 bg-white"
-              />
+              {inviteImageSrc ? (
+                <img
+                  src={inviteImageSrc}
+                  alt="参加者アクセスQR"
+                  className="h-20 w-20 rounded-md border border-slate-200 bg-white"
+                />
+              ) : null}
             </div>
           </div>
         ) : null}

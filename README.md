@@ -1,29 +1,84 @@
 # mjscore
 
+`mjscore` is a small web app for tracking mahjong session results.
+
+It includes:
+
+- player and hand management
+- score aggregation and rank summaries
+- point trend charts
+- shareable read-only snapshots
+- a simple fu helper page
+- an optional Express API for session sync
+
+## Requirements
+
+- Node.js 24
+- pnpm 10.33.4
+
+Enable Corepack if pnpm is not already available:
+
+```sh
+corepack enable
+```
+
 ## Development
+
+Install dependencies:
+
+```sh
+pnpm install --frozen-lockfile
+```
+
+Run the Vite frontend:
 
 ```sh
 pnpm dev
-pnpm dev:api
-pnpm build
-pnpm -s check
 ```
 
-## Display mode (TV)
+Run the API server:
+
+```sh
+pnpm dev:api
+```
+
+Useful checks:
+
+```sh
+pnpm -s lint
+pnpm -s test
+pnpm -s typecheck
+pnpm -s build
+```
+
+E2E tests use Playwright:
+
+```sh
+pnpm -s test:e2e
+```
+
+## Configuration
+
+Local cross-origin API access can be enabled with an explicit allowlist:
+
+```sh
+CORS_ORIGIN=http://localhost:5173
+```
 
 Display mode is enabled when the query parameter includes `display=1`, `display=true`, or `display=display`.
 
-Optional SPA build-time settings (seconds):
+Optional SPA build-time settings:
 
 - `VITE_DISPLAY_REFRESH_INTERVAL_SEC` (default: `1800`) - how often the dark overlay appears
 - `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
+- `VITE_INVITE_URL` - optional text shown in display mode
+- `VITE_INVITE_IMAGE_SRC` - optional image path shown in display mode, such as `/invite.png`
 
-For local cross-origin development, set `CORS_ORIGIN` to an explicit comma-separated allowlist.
-Tailwind remains on v3 because the existing PostCSS/Tailwind config is stable and the v4 migration is a separate CSS toolchain change.
+Do not commit local invite QR images. `public/invite.png` is ignored for local deployments.
 
-## Self-hosting example
+## Self-hosting Example
 
-This repo keeps app code, local development, tests, build, and a generic compose example. Production deploy scripts, production compose, public URL, host port, nginx, backup, and secret paths are managed in a private ops repo.
+This repository keeps app code, local development, tests, build scripts, and a generic compose example. Deployment-specific scripts, public URLs, reverse proxy configuration, host ports, backups, and secret paths should live outside this repository.
 
 Build the SPA:
 
@@ -56,3 +111,11 @@ API logs:
 ```sh
 docker logs -f mjscore-api
 ```
+
+## Publishing Notes
+
+This repository is intended to be safe as source code. Keep deployment-specific values, generated builds, Playwright output, local databases, `.env` files, and invite QR images out of Git history.
+
+## License
+
+No public license has been selected yet. Choose and add a license before publishing the repository.
