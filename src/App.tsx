@@ -22,7 +22,7 @@ import {
 } from "./lib/snapshot";
 import { useSessionStore } from "./lib/useSessionStore";
 
-const FIXED_NAMES = ["プレイヤー1", "プレイヤー2"] as const;
+const DEFAULT_PLAYER_NAMES = ["プレイヤー1", "プレイヤー2", "プレイヤー3", "プレイヤー4"] as const;
 const readSecondsEnv = (value: string | undefined, fallbackSeconds: number): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -76,31 +76,9 @@ const createSession = (): Session => ({
   id: createId(),
   createdAt: new Date().toISOString(),
   day: toJstDateString(new Date()),
-  players: FIXED_NAMES.map((name) => ({ id: createId(), name })),
+  players: DEFAULT_PLAYER_NAMES.map((name) => ({ id: createId(), name })),
   hands: [],
 });
-
-const ensureFixedPlayers = (session: Session): Session => {
-  const nextPlayers = [...session.players];
-  let changed = false;
-
-  FIXED_NAMES.forEach((name, index) => {
-    const player = nextPlayers[index];
-    if (!player) {
-      nextPlayers.splice(index, 0, { id: createId(), name });
-      changed = true;
-      return;
-    }
-    if (player.name !== name) {
-      nextPlayers[index] = { ...player, name };
-      changed = true;
-    }
-  });
-
-  return changed ? { ...session, players: nextPlayers } : session;
-};
-
-const isFixedIndex = (index: number): boolean => index < FIXED_NAMES.length;
 
 const updateHand = (hands: Hand[], nextHand: Hand): Hand[] =>
   hands.map((hand) => (hand.id === nextHand.id ? nextHand : hand));
@@ -175,11 +153,8 @@ const ScoreApp = () => {
     if (!session) {
       return null;
     }
-    if (snapshotMode) {
-      return session;
-    }
-    return ensureFixedPlayers(session);
-  }, [session, snapshotMode]);
+    return session;
+  }, [session]);
   const editingHand =
     normalizedSession?.hands.find((hand) => hand.id === editingHandId) ?? null;
   const aggregate = useMemo(
@@ -314,10 +289,6 @@ const ScoreApp = () => {
     if (!normalizedSession) {
       return;
     }
-    const index = normalizedSession.players.findIndex((player) => player.id === id);
-    if (index !== -1 && isFixedIndex(index)) {
-      return;
-    }
     const next = {
       ...normalizedSession,
       players: normalizedSession.players.map((player) =>
@@ -329,10 +300,6 @@ const ScoreApp = () => {
 
   const handleRemovePlayer = (id: string) => {
     if (!normalizedSession) {
-      return;
-    }
-    const index = normalizedSession.players.findIndex((player) => player.id === id);
-    if (index !== -1 && isFixedIndex(index)) {
       return;
     }
     if (!canRemovePlayer(normalizedSession, id)) {

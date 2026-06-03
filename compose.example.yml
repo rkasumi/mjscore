@@ -1,0 +1,28 @@
+services:
+  mjscore-api:
+    build:
+      context: .
+    image: mjscore-api:local
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+    ports:
+      - "${MJSCORE_API_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - mjscore-data:/data
+    restart: unless-stopped
+    user: "${MJSCORE_UID:-1000}:${MJSCORE_GID:-1000}"
+
+volumes:
+  mjscore-data:

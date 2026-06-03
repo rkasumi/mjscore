@@ -29,7 +29,7 @@ test("starts a score session and opens the score table panel", async ({ page }) 
   await expect(page.getByRole("heading", { name: /麻雀スコア管理/ })).toBeVisible();
   await page.getByRole("button", { name: "卓管理" }).click();
   await page.getByRole("button", { name: "卓を開始" }).click();
-  await expect(page.getByText("プレイヤー1")).toBeVisible();
+  await expect(page.getByRole("textbox").first()).toHaveValue("プレイヤー1");
   await page.getByRole("button", { name: "閉じる" }).click();
 
   await page.getByRole("button", { name: "点数表" }).click();

@@ -42,7 +42,6 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
       <div className="space-y-3">
         {slots.map((slot, index) => {
           const player = players[index];
-          const isFixed = index < 2;
           if (player) {
             const isLocked = usedPlayers.has(player.id);
             return (
@@ -54,27 +53,20 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
                   className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                   value={player.name}
                   onChange={(event) => onRename(player.id, event.target.value)}
-                  disabled={isFixed}
                 />
-                {!isFixed ? (
-                  <button
-                    type="button"
-                    className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm transition ${
-                      isLocked
-                        ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                        : "bg-rose-100 text-rose-700 hover:bg-rose-200"
-                    }`}
-                    onClick={() => onRemove(player.id)}
-                    disabled={isLocked}
-                  >
-                    削除
-                  </button>
-                ) : (
-                  <span className="whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500">
-                    固定
-                  </span>
-                )}
-                {isLocked && !isFixed ? (
+                <button
+                  type="button"
+                  className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm transition ${
+                    isLocked
+                      ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                      : "bg-rose-100 text-rose-700 hover:bg-rose-200"
+                  }`}
+                  onClick={() => onRemove(player.id)}
+                  disabled={isLocked}
+                >
+                  削除
+                </button>
+                {isLocked ? (
                   <span className="whitespace-nowrap text-xs text-slate-500">
                     履歴に使われています
                   </span>
@@ -84,23 +76,6 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
           }
 
           const draft = draftSlots[index] ?? slot;
-          if (isFixed) {
-            return (
-              <div
-                key={slot.id}
-                className="flex items-center gap-2 flex-nowrap"
-              >
-                <input
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-                  value={index === 0 ? "プレイヤー1" : "プレイヤー2"}
-                  disabled
-                />
-                <span className="whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500">
-                  固定
-                </span>
-              </div>
-            );
-          }
           const canAdd = players.length < 6 && draft.name.trim().length > 0;
 
           return (
