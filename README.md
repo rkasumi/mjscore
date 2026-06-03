@@ -118,4 +118,4 @@ This repository is intended to be safe as source code. Keep deployment-specific 
 
 ## License
 
-No public license has been selected yet. Choose and add a license before publishing the repository.
+MIT License. See [LICENSE](./LICENSE).
