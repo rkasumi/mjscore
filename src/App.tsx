@@ -23,8 +23,22 @@ import {
 import { useSessionStore } from "./lib/useSessionStore";
 
 const FALLBACK_PLAYER_NAMES = ["プレイヤー1", "プレイヤー2", "プレイヤー3", "プレイヤー4"] as const;
-const readFixedPlayerCount = (value: string | undefined, max: number): number => {
-  if (!value) {
+const DEFAULT_APP_CONFIG = {
+  defaultPlayerNames: [...FALLBACK_PLAYER_NAMES],
+  fixedPlayerCount: 0,
+};
+const CONFIG_PATH = "/config.json";
+
+type AppConfig = {
+  defaultPlayerNames: string[];
+  fixedPlayerCount: number;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readFixedPlayerCount = (value: unknown, max: number): number => {
+  if (value === undefined) {
     return max;
   }
   const parsed = Number(value);
@@ -33,31 +47,34 @@ const readFixedPlayerCount = (value: string | undefined, max: number): number =>
   }
   return parsed;
 };
-const readDefaultPlayerConfig = (
-  namesValue: string | undefined,
-  fixedCountValue: string | undefined,
-): { names: string[]; fixedPlayerCount: number } => {
-  if (!namesValue) {
-    return { names: [...FALLBACK_PLAYER_NAMES], fixedPlayerCount: 0 };
+
+const readDefaultPlayerNames = (value: unknown): string[] | null => {
+  if (!Array.isArray(value)) {
+    return null;
   }
-  const names = namesValue
-    .split(",")
+  const names = value
+    .filter((name): name is string => typeof name === "string")
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
   if (names.length < 1 || names.length > 6) {
-    return { names: [...FALLBACK_PLAYER_NAMES], fixedPlayerCount: 0 };
+    return null;
+  }
+  return names;
+};
+
+const readAppConfig = (value: unknown): AppConfig => {
+  if (!isRecord(value)) {
+    return DEFAULT_APP_CONFIG;
+  }
+  const names = readDefaultPlayerNames(value.defaultPlayerNames);
+  if (!names) {
+    return DEFAULT_APP_CONFIG;
   }
   return {
-    names,
-    fixedPlayerCount: readFixedPlayerCount(fixedCountValue, names.length),
+    defaultPlayerNames: names,
+    fixedPlayerCount: readFixedPlayerCount(value.fixedPlayerCount, names.length),
   };
 };
-const defaultPlayerConfig = readDefaultPlayerConfig(
-  import.meta.env.VITE_DEFAULT_PLAYER_NAMES,
-  import.meta.env.VITE_FIXED_PLAYER_COUNT,
-);
-const DEFAULT_PLAYER_NAMES = defaultPlayerConfig.names;
-const FIXED_PLAYER_COUNT = defaultPlayerConfig.fixedPlayerCount;
 const readSecondsEnv = (value: string | undefined, fallbackSeconds: number): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -107,11 +124,11 @@ const deriveSessionDay = (session: Session): string => {
   return toJstDateString(Number.isNaN(parsed.getTime()) ? new Date() : parsed);
 };
 
-const createSession = (): Session => ({
+const createSession = (playerNames: string[]): Session => ({
   id: createId(),
   createdAt: new Date().toISOString(),
   day: toJstDateString(new Date()),
-  players: DEFAULT_PLAYER_NAMES.map((name) => ({ id: createId(), name })),
+  players: playerNames.map((name) => ({ id: createId(), name })),
   hands: [],
 });
 
@@ -144,10 +161,36 @@ const parseSnapshotFromLocation = (): SnapshotState => {
 
 const ScoreApp = () => {
   const [snapshotState, setSnapshotState] = useState<SnapshotState>(parseSnapshotFromLocation);
+  const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
+  const [appConfigLoaded, setAppConfigLoaded] = useState(false);
   useEffect(() => {
     const handleHashChange = () => setSnapshotState(parseSnapshotFromLocation());
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadConfig = async () => {
+      try {
+        const response = await fetch(CONFIG_PATH, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (response.ok) {
+          setAppConfig(readAppConfig(await response.json()));
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setAppConfigLoaded(true);
+        }
+      }
+    };
+    void loadConfig();
+    return () => controller.abort();
   }, []);
   const snapshotMode = snapshotState.encoded !== null;
   const snapshotSession = useMemo(
@@ -291,7 +334,10 @@ const ScoreApp = () => {
   }, [setSession, snapshotMode, snapshotSession]);
 
   const handleCreateSession = () => {
-    saveSession(createSession());
+    if (!appConfigLoaded) {
+      return;
+    }
+    saveSession(createSession(appConfig.defaultPlayerNames));
   };
 
   const handleResetHands = () => {
@@ -325,7 +371,7 @@ const ScoreApp = () => {
       return;
     }
     const playerIndex = normalizedSession.players.findIndex((player) => player.id === id);
-    if (playerIndex >= 0 && playerIndex < FIXED_PLAYER_COUNT) {
+    if (playerIndex >= 0 && playerIndex < appConfig.fixedPlayerCount) {
       return;
     }
     const next = {
@@ -342,7 +388,7 @@ const ScoreApp = () => {
       return;
     }
     const playerIndex = normalizedSession.players.findIndex((player) => player.id === id);
-    if (playerIndex >= 0 && playerIndex < FIXED_PLAYER_COUNT) {
+    if (playerIndex >= 0 && playerIndex < appConfig.fixedPlayerCount) {
       return;
     }
     if (!canRemovePlayer(normalizedSession, id)) {
@@ -661,7 +707,7 @@ const ScoreApp = () => {
                           <PlayerManager
                             players={normalizedSession.players}
                             hands={normalizedSession.hands}
-                            fixedPlayerCount={FIXED_PLAYER_COUNT}
+                            fixedPlayerCount={appConfig.fixedPlayerCount}
                             onAdd={handleAddPlayer}
                             onRename={handleRenamePlayer}
                             onRemove={handleRemovePlayer}
@@ -673,6 +719,7 @@ const ScoreApp = () => {
                         )}
                         <SessionControls
                           hasSession={Boolean(normalizedSession)}
+                          createDisabled={!appConfigLoaded}
                           onCreate={handleCreateSession}
                           onResetHands={handleResetHands}
                         />

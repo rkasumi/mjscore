@@ -73,10 +73,20 @@ Optional SPA build-time settings:
 - `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
 - `VITE_INVITE_URL` - optional text shown in display mode
 - `VITE_INVITE_IMAGE_SRC` - optional image path shown in display mode, such as `/invite.png`
-- `VITE_DEFAULT_PLAYER_NAMES` - optional comma-separated default player names, such as `Alice,Bob,Carol,Dave`; valid when set to 1-6 non-empty names, and empty entries such as `Alice,Bob,,` are left as unregistered slots
-- `VITE_FIXED_PLAYER_COUNT` - optional number of default players to lock from the start of `VITE_DEFAULT_PLAYER_NAMES`; defaults to all default players when `VITE_DEFAULT_PLAYER_NAMES` is set
 
-Do not commit local invite QR images. `public/invite.png` is ignored for local deployments.
+Optional runtime SPA settings can be placed in `public/config.json` for local/self-hosted deployments:
+
+```json
+{
+  "defaultPlayerNames": ["Alice", "Bob"],
+  "fixedPlayerCount": 2
+}
+```
+
+- `defaultPlayerNames` - optional default player names; valid when set to 1-6 non-empty names
+- `fixedPlayerCount` - optional number of default players to lock from the start of `defaultPlayerNames`; defaults to all configured default players
+
+When `config.json` is missing or invalid, the app uses `プレイヤー1` through `プレイヤー4` and no players are locked. Do not commit local invite QR images or personal config. `public/invite.png` and `public/config.json` are ignored for local deployments.
 
 ## Self-hosting Example
 
