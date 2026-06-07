@@ -22,7 +22,42 @@ import {
 } from "./lib/snapshot";
 import { useSessionStore } from "./lib/useSessionStore";
 
-const DEFAULT_PLAYER_NAMES = ["プレイヤー1", "プレイヤー2", "プレイヤー3", "プレイヤー4"] as const;
+const FALLBACK_PLAYER_NAMES = ["プレイヤー1", "プレイヤー2", "プレイヤー3", "プレイヤー4"] as const;
+const readFixedPlayerCount = (value: string | undefined, max: number): number => {
+  if (!value) {
+    return max;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > max) {
+    return max;
+  }
+  return parsed;
+};
+const readDefaultPlayerConfig = (
+  namesValue: string | undefined,
+  fixedCountValue: string | undefined,
+): { names: string[]; fixedPlayerCount: number } => {
+  if (!namesValue) {
+    return { names: [...FALLBACK_PLAYER_NAMES], fixedPlayerCount: 0 };
+  }
+  const names = namesValue
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+  if (names.length < 1 || names.length > 6) {
+    return { names: [...FALLBACK_PLAYER_NAMES], fixedPlayerCount: 0 };
+  }
+  return {
+    names,
+    fixedPlayerCount: readFixedPlayerCount(fixedCountValue, names.length),
+  };
+};
+const defaultPlayerConfig = readDefaultPlayerConfig(
+  import.meta.env.VITE_DEFAULT_PLAYER_NAMES,
+  import.meta.env.VITE_FIXED_PLAYER_COUNT,
+);
+const DEFAULT_PLAYER_NAMES = defaultPlayerConfig.names;
+const FIXED_PLAYER_COUNT = defaultPlayerConfig.fixedPlayerCount;
 const readSecondsEnv = (value: string | undefined, fallbackSeconds: number): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -289,6 +324,10 @@ const ScoreApp = () => {
     if (!normalizedSession) {
       return;
     }
+    const playerIndex = normalizedSession.players.findIndex((player) => player.id === id);
+    if (playerIndex >= 0 && playerIndex < FIXED_PLAYER_COUNT) {
+      return;
+    }
     const next = {
       ...normalizedSession,
       players: normalizedSession.players.map((player) =>
@@ -300,6 +339,10 @@ const ScoreApp = () => {
 
   const handleRemovePlayer = (id: string) => {
     if (!normalizedSession) {
+      return;
+    }
+    const playerIndex = normalizedSession.players.findIndex((player) => player.id === id);
+    if (playerIndex >= 0 && playerIndex < FIXED_PLAYER_COUNT) {
       return;
     }
     if (!canRemovePlayer(normalizedSession, id)) {
@@ -618,6 +661,7 @@ const ScoreApp = () => {
                           <PlayerManager
                             players={normalizedSession.players}
                             hands={normalizedSession.hands}
+                            fixedPlayerCount={FIXED_PLAYER_COUNT}
                             onAdd={handleAddPlayer}
                             onRename={handleRenamePlayer}
                             onRemove={handleRemovePlayer}

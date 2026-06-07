@@ -73,6 +73,8 @@ Optional SPA build-time settings:
 - `VITE_DISPLAY_REFRESH_DURATION_SEC` (default: `5`) - how long the overlay stays visible
 - `VITE_INVITE_URL` - optional text shown in display mode
 - `VITE_INVITE_IMAGE_SRC` - optional image path shown in display mode, such as `/invite.png`
+- `VITE_DEFAULT_PLAYER_NAMES` - optional comma-separated default player names, such as `Alice,Bob,Carol,Dave`; valid when set to 1-6 non-empty names, and empty entries such as `Alice,Bob,,` are left as unregistered slots
+- `VITE_FIXED_PLAYER_COUNT` - optional number of default players to lock from the start of `VITE_DEFAULT_PLAYER_NAMES`; defaults to all default players when `VITE_DEFAULT_PLAYER_NAMES` is set
 
 Do not commit local invite QR images. `public/invite.png` is ignored for local deployments.
 

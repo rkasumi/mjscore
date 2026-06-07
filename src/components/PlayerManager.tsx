@@ -10,6 +10,7 @@ type DraftSlot = {
 type Props = {
   players: Player[];
   hands: Hand[];
+  fixedPlayerCount?: number;
   onAdd: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onRemove: (id: string) => void;
@@ -18,7 +19,14 @@ type Props = {
 const ensureSlots = (count: number): DraftSlot[] =>
   Array.from({ length: count }, (_, index) => ({ id: `slot-${index}`, name: "" }));
 
-export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Props) => {
+export const PlayerManager = ({
+  players,
+  hands,
+  fixedPlayerCount = 0,
+  onAdd,
+  onRename,
+  onRemove,
+}: Props) => {
   const [draftSlots, setDraftSlots] = useState<DraftSlot[]>(ensureSlots(4));
   const [extraName, setExtraName] = useState("");
 
@@ -44,6 +52,17 @@ export const PlayerManager = ({ players, hands, onAdd, onRename, onRemove }: Pro
           const player = players[index];
           if (player) {
             const isLocked = usedPlayers.has(player.id);
+            if (index < fixedPlayerCount) {
+              return (
+                <div
+                  key={player.id}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  {player.name}
+                </div>
+              );
+            }
+
             return (
               <div
                 key={player.id}
