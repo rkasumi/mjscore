@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Session } from "../shared/types.js";
@@ -103,6 +104,19 @@ describe("SessionRepository", () => {
     }
   });
 
+  it("finalizes the active session without creating a replacement", () => {
+    const repository = createRepository();
+    try {
+      repository.saveActiveSession(createSession("final"), 0);
+      const envelope = repository.finalizeActiveSession("final", 1);
+      expect(envelope).toMatchObject({ version: 2, session: null });
+      expect(repository.readSessionDetail("final")?.summary.status).toBe("finalized");
+      expect(repository.listKnownPlayers()).toEqual(createSession("final").players);
+    } finally {
+      repository.close();
+    }
+  });
+
   it("voids only finalized sessions", () => {
     const repository = createRepository();
     try {
@@ -116,6 +130,43 @@ describe("SessionRepository", () => {
       expect(repository.readSessionDetail("first")?.summary.status).toBe("voided");
     } finally {
       repository.close();
+    }
+  });
+
+  it("filters finalized sessions by day and stores season definitions", () => {
+    const repository = createRepository();
+    try {
+      repository.saveActiveSession({ ...createSession("june"), day: "2026-06-30" }, 0);
+      repository.saveActiveSession({ ...createSession("july"), day: "2026-07-01" }, 1);
+      repository.saveActiveSession({ ...createSession("active"), day: "2026-08-01" }, 2);
+      expect(repository.listFinalizedSessions("2026-07-01", "2026-07-31").map((item) => item.id)).toEqual([
+        "july",
+      ]);
+      const season = repository.createSeason(" 2026年7月 ", "2026-07-01", "2026-07-31");
+      expect(repository.listSeasons()).toEqual([{ ...season, name: "2026年7月" }]);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("upgrades a schema version 1 database before using seasons", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "mjscore-storage-"));
+    directories.push(directory);
+    const databasePath = path.join(directory, "mjscore.sqlite");
+    const repository = new SessionRepository(databasePath);
+    repository.close();
+
+    const oldDatabase = new DatabaseSync(databasePath);
+    oldDatabase.exec("DROP TABLE seasons");
+    oldDatabase.prepare("UPDATE metadata SET value = '1' WHERE key = 'schema_version'").run();
+    oldDatabase.close();
+
+    const upgraded = new SessionRepository(databasePath);
+    try {
+      const season = upgraded.createSeason("upgrade", "2026-01-01", "2026-12-31");
+      expect(upgraded.listSeasons()).toEqual([season]);
+    } finally {
+      upgraded.close();
     }
   });
 

@@ -1,5 +1,6 @@
 import { parseSession, parseSessionEnvelope } from "../../shared/sessionValidation";
 import type {
+  Player,
   SessionDetail,
   SessionEnvelope,
   SessionStatus,
@@ -75,9 +76,22 @@ export const fetchSessionDetail = async (id: string): Promise<SessionDetail> => 
   };
 };
 
+export const fetchStoredPlayers = async (): Promise<Player[]> => {
+  const payload = await readJson(await fetch(`${apiBaseUrl}/players`));
+  if (!isRecord(payload) || !Array.isArray(payload.players)) {
+    throw new Error("Invalid players response");
+  }
+  return payload.players.map((value) => {
+    if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
+      throw new Error("Invalid stored player");
+    }
+    return { id: value.id, name: value.name };
+  });
+};
+
 const mutateSession = async (
   id: string,
-  action: "reopen" | "void",
+  action: "finalize" | "reopen" | "void",
   baseVersion: number,
 ): Promise<SessionEnvelope> => {
   const response = await fetch(
@@ -93,6 +107,9 @@ const mutateSession = async (
 
 export const reopenStoredSession = (id: string, baseVersion: number): Promise<SessionEnvelope> =>
   mutateSession(id, "reopen", baseVersion);
+
+export const finalizeStoredSession = (id: string, baseVersion: number): Promise<SessionEnvelope> =>
+  mutateSession(id, "finalize", baseVersion);
 
 export const voidStoredSession = (id: string, baseVersion: number): Promise<SessionEnvelope> =>
   mutateSession(id, "void", baseVersion);

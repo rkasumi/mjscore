@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
-import type { Hand, HandSeat, Session } from "../shared/types";
+import type { Hand, HandSeat, Player, Session } from "../shared/types";
+import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
 import { DisplayInsights } from "./components/DisplayInsights";
 import { GraphPanel } from "./components/GraphPanel";
 import { HandForm } from "./components/HandForm";
@@ -16,6 +17,7 @@ import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
 import { buildSessionAggregate } from "./lib/aggregation";
 import { createId } from "./lib/id";
+import { fetchStoredPlayers, finalizeStoredSession } from "./lib/sessionHistory";
 import {
   decodeSnapshot,
   getSnapshotPathEncoded,
@@ -99,7 +101,7 @@ type SnapshotState = {
   error: string | null;
 };
 
-type ActivePanel = "controls" | "handInput" | "history" | "reverse" | "scoreTable";
+type ActivePanel = "analytics" | "controls" | "handInput" | "history" | "reverse" | "scoreTable";
 
 const getInitialPanel = (): ActivePanel | null => {
   if (window.location.hash === "#score-table" || window.location.hash === "#fu-table") {
@@ -131,6 +133,14 @@ const createSession = (playerNames: string[]): Session => ({
   createdAt: new Date().toISOString(),
   day: toJstDateString(new Date()),
   players: playerNames.map((name) => ({ id: createId(), name })),
+  hands: [],
+});
+
+const createSessionWithPlayers = (players: Player[]): Session => ({
+  id: createId(),
+  createdAt: new Date().toISOString(),
+  day: toJstDateString(new Date()),
+  players: players.map((player) => ({ ...player })),
   hands: [],
 });
 
@@ -217,6 +227,8 @@ const ScoreApp = () => {
     disablePersistence: snapshotMode,
   });
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
+  const [storedPlayers, setStoredPlayers] = useState<Player[]>([]);
+  const [storedPlayersLoaded, setStoredPlayersLoaded] = useState(false);
   const [sessionLabelDraft, setSessionLabelDraft] = useState("");
   const [activePanel, setActivePanel] = useState<ActivePanel | null>(getInitialPanel);
   const modalRef = useRef<HTMLDivElement | null>(null);
@@ -255,6 +267,19 @@ const ScoreApp = () => {
   useEffect(() => {
     setSessionLabelDraft(normalizedSession?.label ?? "");
   }, [normalizedSession?.id, normalizedSession?.label]);
+  useEffect(() => {
+    if (normalizedSession) {
+      setStoredPlayers(normalizedSession.players);
+      setStoredPlayersLoaded(true);
+      return;
+    }
+    if (!snapshotMode) {
+      void fetchStoredPlayers()
+        .then(setStoredPlayers)
+        .catch(() => undefined)
+        .finally(() => setStoredPlayersLoaded(true));
+    }
+  }, [normalizedSession, snapshotMode]);
   const defaultSeatIds = useMemo(() => {
     if (!normalizedSession) {
       return [];
@@ -342,10 +367,14 @@ const ScoreApp = () => {
   }, [setSession, snapshotMode, snapshotSession]);
 
   const handleCreateSession = () => {
-    if (!appConfigLoaded) {
+    if (!appConfigLoaded || !storedPlayersLoaded) {
       return;
     }
-    saveSession(createSession(appConfig.defaultPlayerNames));
+    saveSession(
+      storedPlayers.length > 0
+        ? createSessionWithPlayers(storedPlayers)
+        : createSession(appConfig.defaultPlayerNames),
+    );
   };
 
   const handleResetHands = () => {
@@ -361,6 +390,16 @@ const ScoreApp = () => {
     };
     saveSession(next);
     setEditingHandId(null);
+  };
+
+  const handleFinalizeSession = async () => {
+    if (!normalizedSession || meta?.version === undefined) return;
+    try {
+      adoptEnvelope(await finalizeStoredSession(normalizedSession.id, meta.version));
+      setActivePanel(null);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "卓の確定に失敗しました。");
+    }
   };
 
   const handleAddPlayer = (name: string) => {
@@ -661,6 +700,17 @@ const ScoreApp = () => {
                 >
                   結果履歴
                 </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "analytics"
+                      ? "bg-violet-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={handleTogglePanel("analytics")}
+                >
+                  成績分析
+                </button>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <button
@@ -700,13 +750,15 @@ const ScoreApp = () => {
                       <h3 id={panelTitleId} className="font-display text-lg text-slate-900">
                         {activePanel === "controls"
                           ? "卓管理"
-                          : activePanel === "handInput"
-                            ? "半荘入力"
-                            : activePanel === "history"
-                              ? "結果履歴"
-                              : activePanel === "scoreTable"
-                                ? "点数表"
-                                : "逆転条件"}
+                          : activePanel === "analytics"
+                            ? "成績分析"
+                            : activePanel === "handInput"
+                              ? "半荘入力"
+                              : activePanel === "history"
+                                ? "結果履歴"
+                                : activePanel === "scoreTable"
+                                  ? "点数表"
+                                  : "逆転条件"}
                       </h3>
                       <button
                         type="button"
@@ -737,8 +789,9 @@ const ScoreApp = () => {
                         )}
                         <SessionControls
                           hasSession={Boolean(normalizedSession)}
-                          createDisabled={!appConfigLoaded}
+                          createDisabled={!appConfigLoaded || !storedPlayersLoaded}
                           onCreate={handleCreateSession}
+                          onFinalize={() => void handleFinalizeSession()}
                           onResetHands={handleResetHands}
                         />
                         {normalizedSession ? (
@@ -823,6 +876,7 @@ const ScoreApp = () => {
                         onReopened={() => setActivePanel(null)}
                       />
                     ) : null}
+                    {activePanel === "analytics" ? <AnalyticsDashboard /> : null}
                   </div>
                 </div>
               </div>

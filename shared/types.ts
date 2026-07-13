@@ -47,3 +47,53 @@ export type SessionDetail = {
   summary: SessionSummary;
   session: Session;
 };
+
+export type Season = {
+  id: string;
+  name: string;
+  startsOn: string;
+  endsOn: string;
+  createdAt: string;
+};
+
+export type PlayerAnalytics = {
+  playerId: string;
+  name: string;
+  hands: number;
+  totalPoint: number;
+  averagePoint: number | null;
+  averageRank: number | null;
+  rankCounts: [number, number, number, number];
+  topRate: number | null;
+  lastRate: number | null;
+};
+
+export type HeadToHeadAnalytics = {
+  playerAId: string;
+  playerBId: string;
+  sharedHands: number;
+  playerAHigher: number;
+  playerBHigher: number;
+  ties: number;
+  playerAPoint: number;
+  playerBPoint: number;
+};
+
+export type PlayerRecord = {
+  playerId: string;
+  highestScore: number | null;
+  lowestScore: number | null;
+  bestPoint: number | null;
+  worstPoint: number | null;
+  longestTopStreak: number;
+};
+
+export type AnalyticsResponse = {
+  from: string | null;
+  to: string | null;
+  sessions: number;
+  hands: number;
+  players: PlayerAnalytics[];
+  headToHead: HeadToHeadAnalytics[];
+  records: PlayerRecord[];
+};

@@ -1,4 +1,5 @@
 import type { Session } from "../../shared/types";
+import { ORIGIN_SCORE } from "../../shared/rules";
 import { calculateHandResults } from "./scoring";
 
 export type ConditionNeedGap = {
@@ -6,8 +7,7 @@ export type ConditionNeedGap = {
   gap: number;
 };
 
-export const RANK_POINTS = [50, 10, -10, -30];
-export const ORIGIN_SCORE = 30000;
+export { ORIGIN_SCORE, RANK_POINTS } from "../../shared/rules";
 export const DEFAULT_TOP_N = 3;
 export const DEFAULT_MAX_GAP = 100000;
 export const DEFAULT_TOP_GAP_COUNT = 2;

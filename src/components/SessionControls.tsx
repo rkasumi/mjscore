@@ -2,6 +2,7 @@ type Props = {
   hasSession: boolean;
   createDisabled?: boolean;
   onCreate: () => void;
+  onFinalize: () => void;
   onResetHands: () => void;
 };
 
@@ -9,6 +10,7 @@ export const SessionControls = ({
   hasSession,
   createDisabled = false,
   onCreate,
+  onFinalize,
   onResetHands,
 }: Props) => {
   return (
@@ -25,6 +27,19 @@ export const SessionControls = ({
           disabled={createDisabled}
         >
           卓を開始
+        </button>
+      ) : null}
+      {hasSession ? (
+        <button
+          type="button"
+          className="rounded-2xl bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-200"
+          onClick={() => {
+            if (window.confirm("現在の卓を確定して履歴へ保存しますか？")) {
+              onFinalize();
+            }
+          }}
+        >
+          現在の卓を確定
         </button>
       ) : null}
       {hasSession ? (

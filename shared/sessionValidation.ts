@@ -16,6 +16,12 @@ const isOptionalString = (value: unknown): value is string | undefined =>
 const isIsoDate = (value: unknown): value is string =>
   typeof value === "string" && !Number.isNaN(Date.parse(value));
 
+export const isDateOnly = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+
 const isPlayer = (value: unknown): value is Player =>
   isRecord(value) && isNonEmptyString(value.id) && isNonEmptyString(value.name);
 
@@ -46,7 +52,7 @@ export const isSession = (value: unknown): value is Session => {
     !isRecord(value) ||
     !isNonEmptyString(value.id) ||
     !isIsoDate(value.createdAt) ||
-    !isOptionalString(value.day) ||
+    !(value.day === undefined || isDateOnly(value.day)) ||
     !isOptionalString(value.label) ||
     !Array.isArray(value.players) ||
     value.players.length < 1 ||

@@ -1,19 +1,21 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 
-import { parseSession } from "../shared/sessionValidation.js";
+import { isDateOnly, parseSession } from "../shared/sessionValidation.js";
 import type {
   Hand,
   HandSeat,
   Player,
   Session,
   SessionEnvelope,
+  Season,
   SessionStatus,
   SessionSummary,
 } from "../shared/types.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const asString = (value: SQLOutputValue | undefined, field: string): string => {
   if (typeof value !== "string") {
@@ -203,6 +205,57 @@ export class SessionRepository {
     return session && summary ? { summary, session } : null;
   }
 
+  listFinalizedSessions(from: string | null, to: string | null): Session[] {
+    return this.listSessions()
+      .filter((summary) => {
+        if (summary.status !== "finalized") return false;
+        const day = summary.day ?? summary.createdAt.slice(0, 10);
+        return (!from || day >= from) && (!to || day <= to);
+      })
+      .map((summary) => this.readSession(summary.id))
+      .filter((session): session is Session => session !== null);
+  }
+
+  listKnownPlayers(): Player[] {
+    const latest = this.listSessions().find((summary) => summary.status !== "voided");
+    return latest ? (this.readSession(latest.id)?.players ?? []) : [];
+  }
+
+  listSeasons(): Season[] {
+    return this.db
+      .prepare("SELECT id, name, starts_on, ends_on, created_at FROM seasons ORDER BY starts_on DESC")
+      .all()
+      .map((row) => ({
+        id: asString(row.id, "season id"),
+        name: asString(row.name, "season name"),
+        startsOn: asString(row.starts_on, "season start"),
+        endsOn: asString(row.ends_on, "season end"),
+        createdAt: asString(row.created_at, "season created at"),
+      }));
+  }
+
+  createSeason(nameValue: string, startsOn: string, endsOn: string): Season {
+    const name = nameValue.trim();
+    if (!name || name.length > 100) throw new Error("Invalid season name");
+    if (!isDateOnly(startsOn) || !isDateOnly(endsOn)) {
+      throw new Error("Invalid season dates");
+    }
+    if (startsOn > endsOn) throw new Error("Season start must not be after end");
+    const season: Season = {
+      id: randomUUID(),
+      name,
+      startsOn,
+      endsOn,
+      createdAt: new Date().toISOString(),
+    };
+    this.db
+      .prepare(
+        "INSERT INTO seasons(id, name, starts_on, ends_on, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(season.id, season.name, season.startsOn, season.endsOn, season.createdAt);
+    return season;
+  }
+
   reopenSession(id: string, baseVersion: number): SessionEnvelope {
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -240,6 +293,33 @@ export class SessionRepository {
       }
       this.db.exec("COMMIT");
       return { version: nextVersion, updatedAt: now, session };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  finalizeActiveSession(id: string, baseVersion: number): SessionEnvelope {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.readEnvelope();
+      if (current.version !== baseVersion) {
+        throw new SessionConflictError(current);
+      }
+      if (!current.session || current.session.id !== id) {
+        throw new Error("Active session not found");
+      }
+      const now = new Date().toISOString();
+      const nextVersion = current.version + 1;
+      this.db
+        .prepare(
+          "UPDATE sessions SET status = 'finalized', version = ?, finalized_at = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(nextVersion, now, now, id);
+      this.writeMeta("global_version", String(nextVersion));
+      this.writeMeta("updated_at", now);
+      this.db.exec("COMMIT");
+      return { version: nextVersion, updatedAt: now, session: null };
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
@@ -376,6 +456,14 @@ export class SessionRepository {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS hands_session_id ON hands(session_id);
       CREATE INDEX IF NOT EXISTS hand_results_player_id ON hand_results(player_id);
+      CREATE TABLE IF NOT EXISTS seasons (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        starts_on TEXT NOT NULL,
+        ends_on TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        CHECK (starts_on <= ends_on)
+      ) STRICT;
     `);
     const now = new Date().toISOString();
     this.db
@@ -387,7 +475,10 @@ export class SessionRepository {
     this.db
       .prepare("INSERT OR IGNORE INTO metadata(key, value) VALUES ('updated_at', ?)")
       .run(now);
-    if (this.readMetaNumber("schema_version") !== SCHEMA_VERSION) {
+    const schemaVersion = this.readMetaNumber("schema_version");
+    if (schemaVersion === 1) {
+      this.writeMeta("schema_version", String(SCHEMA_VERSION));
+    } else if (schemaVersion !== SCHEMA_VERSION) {
       throw new Error("Unsupported database schema version");
     }
   }

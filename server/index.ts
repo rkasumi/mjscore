@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 
+import { isDateOnly } from "../shared/sessionValidation.js";
+import { buildAnalytics } from "./analytics.js";
 import {
   getDefaultRepository,
   readEnvelope,
@@ -53,6 +55,58 @@ app.get("/sessions/:id", (req, res) => {
   }
 });
 
+app.get("/analytics", (req, res) => {
+  const from = typeof req.query.from === "string" ? req.query.from : null;
+  const to = typeof req.query.to === "string" ? req.query.to : null;
+  if (
+    (from && !isDateOnly(from)) ||
+    (to && !isDateOnly(to)) ||
+    (from && to && from > to)
+  ) {
+    res.status(400).json({ error: "Invalid analytics date range" });
+    return;
+  }
+  try {
+    const sessions = getDefaultRepository().listFinalizedSessions(from, to);
+    res.json(buildAnalytics(sessions, from, to));
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.get("/seasons", (_req, res) => {
+  try {
+    res.json({ seasons: getDefaultRepository().listSeasons() });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.get("/players", (_req, res) => {
+  try {
+    res.json({ players: getDefaultRepository().listKnownPlayers() });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/seasons", (req, res) => {
+  const body = req.body as { name?: unknown; startsOn?: unknown; endsOn?: unknown };
+  if (
+    typeof body.name !== "string" ||
+    typeof body.startsOn !== "string" ||
+    typeof body.endsOn !== "string"
+  ) {
+    res.status(400).json({ error: "name, startsOn, and endsOn are required" });
+    return;
+  }
+  try {
+    res.status(201).json(getDefaultRepository().createSeason(body.name, body.startsOn, body.endsOn));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid season" });
+  }
+});
+
 app.post("/session", async (req, res) => {
   const body = req.body as { baseVersion?: unknown; session?: unknown };
   if (!body.session || !Number.isInteger(body.baseVersion) || Number(body.baseVersion) < 0) {
@@ -81,7 +135,7 @@ const handleSessionMutationError = (error: unknown, res: express.Response): void
     res.status(409).json({ error: error.message, current: error.current });
     return;
   }
-  if (error instanceof Error && error.message === "Session not found") {
+  if (error instanceof Error && error.message.toLowerCase().endsWith("session not found")) {
     res.status(404).json({ error: error.message });
     return;
   }
@@ -100,6 +154,19 @@ app.post("/sessions/:id/reopen", (req, res) => {
   }
   try {
     res.json(getDefaultRepository().reopenSession(req.params.id, Number(body.baseVersion)));
+  } catch (error) {
+    handleSessionMutationError(error, res);
+  }
+});
+
+app.post("/sessions/:id/finalize", (req, res) => {
+  const body = req.body as { baseVersion?: unknown };
+  if (!Number.isInteger(body.baseVersion) || Number(body.baseVersion) < 0) {
+    res.status(400).json({ error: "baseVersion is required" });
+    return;
+  }
+  try {
+    res.json(getDefaultRepository().finalizeActiveSession(req.params.id, Number(body.baseVersion)));
   } catch (error) {
     handleSessionMutationError(error, res);
   }

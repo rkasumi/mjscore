@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isSession,
   isSessionEnvelope,
+  isDateOnly,
   parseSession,
   parseSessionEnvelope,
 } from "./sessionValidation.js";
@@ -59,5 +60,10 @@ describe("session validation", () => {
     expect(isSessionEnvelope(envelope)).toBe(true);
     expect(parseSessionEnvelope(envelope)).toEqual(envelope);
     expect(isSessionEnvelope({ ...envelope, version: -1 })).toBe(false);
+  });
+
+  it("rejects calendar dates that do not exist", () => {
+    expect(isDateOnly("2026-02-28")).toBe(true);
+    expect(isDateOnly("2026-02-30")).toBe(false);
   });
 });

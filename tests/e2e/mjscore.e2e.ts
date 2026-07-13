@@ -7,6 +7,25 @@ const emptyEnvelope = {
 };
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/analytics?*", async (route) => {
+    await route.fulfill({
+      json: {
+        from: null,
+        to: null,
+        sessions: 0,
+        hands: 0,
+        players: [],
+        headToHead: [],
+        records: [],
+      },
+    });
+  });
+  await page.route("**/api/seasons", async (route) => {
+    await route.fulfill({ json: { seasons: [] } });
+  });
+  await page.route("**/api/players", async (route) => {
+    await route.fulfill({ json: { players: [] } });
+  });
   await page.route("**/api/sessions", async (route) => {
     await route.fulfill({ json: { sessions: [] } });
   });
@@ -32,6 +51,14 @@ test("opens the stored result history", async ({ page }) => {
   await page.getByRole("button", { name: "結果履歴" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("保存済みの卓はありません。")).toBeVisible();
+});
+
+test("opens the historical analytics dashboard", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "成績分析" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText("対象: 0卓・0半荘（確定済みのみ）")).toBeVisible();
 });
 
 test("starts a score session and opens the score table panel", async ({ page }) => {
