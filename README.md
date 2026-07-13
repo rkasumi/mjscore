@@ -11,6 +11,7 @@ It includes:
 - a simple fu helper page
 - an optional Express API for session sync
 - SQLite-backed session history for the API
+- historical rankings, direct matchups, personal records, and saved seasons
 
 ## Requirements
 
@@ -43,6 +44,9 @@ Run the API server:
 pnpm dev:api
 ```
 
+The Vite development server proxies `/api` to `http://127.0.0.1:3000`, so the
+two commands above work together without additional CORS configuration.
+
 The API stores data in `${DATA_DIR:-/data}/mjscore.sqlite`. Writes use SQLite
 transactions and optimistic version checks. Starting a session with a new ID
 finalizes the previous active session instead of deleting it.
@@ -70,6 +74,24 @@ node server/dist/server/migrate-json.js --apply
 ```
 
 The migration is intentionally one-way and does not delete `session.json`.
+
+## Stored Results and Analytics
+
+Starting a new table finalizes the previous one. A table can also be finalized
+without starting another table, reopened from result history, or marked as
+excluded from analytics without deleting its data.
+
+The analytics view includes:
+
+- all-time and date-range rankings
+- monthly and saved-season rankings
+- total and average points, average rank, top rate, last rate, and rank counts
+- head-to-head results for players who shared a hand
+- highest/lowest score, best/worst hand points, and longest top streak
+
+Only finalized, non-voided tables are included in analytics. `/share/` remains
+an explicitly generated read-only snapshot and does not expose result-history
+listing APIs.
 
 Useful checks:
 

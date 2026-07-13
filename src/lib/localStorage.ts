@@ -41,6 +41,13 @@ export const loadLocalSession = (): Session | null => {
 
 export const saveLocalSession = (session: Session): void => {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  const currentPrefix = `${SEAT_PICKER_PREFIX}.${session.id}.`;
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(`${SEAT_PICKER_PREFIX}.`) && !key.startsWith(currentPrefix)) {
+      localStorage.removeItem(key);
+    }
+  }
 };
 
 export const clearLocalSession = (): void => {
