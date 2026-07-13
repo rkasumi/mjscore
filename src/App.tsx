@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import type { Hand, HandSeat, Session } from "../shared/types";
+import { DisplayInsights } from "./components/DisplayInsights";
 import { GraphPanel } from "./components/GraphPanel";
 import { HandForm } from "./components/HandForm";
 import { HandHistory } from "./components/HandHistory";
@@ -587,6 +588,10 @@ const ScoreApp = () => {
                 hideTrendColumns={snapshotMode}
               />
             </div>
+
+            {displayMode && normalizedSession ? (
+              <DisplayInsights session={normalizedSession} seatPlayerIds={seatPlayerIds} />
+            ) : null}
 
             {!displayMode ? (
               normalizedSession ? (

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { Player, Session } from "../../shared/types";
 import type { SessionAggregate } from "../lib/aggregation";
+import { buildScenarioPremise } from "../lib/displayInsights";
 import {
   calculateReverseConditions,
   buildNaturalLanguageSummary,
@@ -18,9 +19,10 @@ type Props = {
 };
 
 const NOTE_TEXT =
-  "同点が起きると順位点が平均配分され、条件が変わる場合があります。同点になるとウマが平均され、条件が前後する可能性があります。";
+  "同点時は順位点が平均配分されるため、表示条件が前後する場合があります。";
 
 const TOOLTIP_LINES = [
+  "点差 = あなたの素点 − 相手の素点",
   "1着：+50,000点",
   "2着：+10,000点",
   "3着：-10,000点",
@@ -144,6 +146,10 @@ const ConditionSection = ({
             (a, b) => a.difficulty - b.difficulty,
           )[0];
           if (!best) return null;
+          const premise = buildScenarioPremise(
+            best,
+            new Map([...playerMap].map(([id, player]) => [id, player.name])),
+          );
           return (
             <div
               key={rank}
@@ -151,6 +157,7 @@ const ConditionSection = ({
             >
               <div className="border-b border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500">
                 あなた: {rank}着
+                <div className="mt-0.5 text-[10px] text-slate-400">前提: {premise}</div>
               </div>
               <table className="w-full text-xs">
                 <thead>
@@ -188,7 +195,7 @@ const ConditionSection = ({
                       {best.needScoreMin ? (
                         <tr>
                           <td className="border-t border-slate-200 px-2 py-1 text-slate-600">
-                            非参加者含む
+                            抜け番プレイヤーを上回る
                           </td>
                           <td className="border-t border-slate-200 px-2 py-1 text-slate-700">
                             得点が{" "}
@@ -293,11 +300,12 @@ export const ReverseCondition = ({
 
             const minRankOneUp = reverseResult?.maxRankOneUp.get(player.id) ?? null;
             const minRankFirst = reverseResult?.maxRankToFirst.get(player.id) ?? null;
-            const relevantMinRank = isFirst ? minRankFirst : minRankOneUp;
 
             const oneUpTargetRank = overallRank > 1 ? overallRank - 1 : null;
+            const showOneUp = !isFirst && oneUpTargetRank !== 1;
+            const relevantMinRank = isFirst || !showOneUp ? minRankFirst : minRankOneUp;
             const oneUpSummary =
-              oneUpTargetRank !== null
+              showOneUp && oneUpTargetRank !== null
                 ? buildNaturalLanguageSummary({
                     scenarios: oneUpScenarios,
                     targetRank: oneUpTargetRank,
@@ -358,7 +366,7 @@ export const ReverseCondition = ({
                 ) : null}
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  {!isFirst ? (
+                  {showOneUp ? (
                     <ConditionSection
                       title={`1つ上の順位条件（→総合${oneUpTargetRank}位へ）`}
                       scenarios={oneUpScenarios}
