@@ -75,6 +75,27 @@ node server/dist/server/migrate-json.js --apply
 
 The migration is intentionally one-way and does not delete `session.json`.
 
+### Creating a SQLite-consistent backup
+
+Create an online backup while the API is running with:
+
+```sh
+DATA_DIR=/path/to/data pnpm backup:sqlite
+```
+
+By default this writes `backups/mjscore.sqlite` under `DATA_DIR`. The command
+backs up to a temporary file, runs `PRAGMA quick_check`, and atomically replaces
+the previous checked backup. The compiled production command is:
+
+```sh
+node server/dist/server/backup-sqlite.js \
+  --source /data/mjscore.sqlite \
+  --output /data/backups/mjscore.sqlite
+```
+
+Use this checked standalone file as the restic backup source instead of copying
+the live database, WAL, and SHM files independently.
+
 ## Stored Results and Analytics
 
 Starting a new table finalizes the previous one. A table can also be finalized

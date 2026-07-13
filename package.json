@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx server/index.ts",
+    "backup:sqlite": "tsx server/backup-sqlite.ts",
     "migrate:json": "tsx server/migrate-json.ts",
     "build:web": "vite build",
     "build:api": "tsc -p server/tsconfig.build.json",

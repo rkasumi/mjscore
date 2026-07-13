@@ -10,6 +10,7 @@ import {
   SessionConflictError,
   SessionRepository,
 } from "./storage.js";
+import { createSqliteBackup } from "./sqlite-backup.js";
 
 const directories: string[] = [];
 
@@ -219,6 +220,33 @@ describe("SessionRepository", () => {
         "Invalid session payload",
       );
       expect(repository.readEnvelope().session).toBeNull();
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("creates a checked standalone backup while the WAL database is open", async () => {
+    const repository = createRepository();
+    const backupPath = path.join(
+      path.dirname(repository.databasePath),
+      "backups",
+      "mjscore.sqlite",
+    );
+    try {
+      repository.saveActiveSession(createSession(), 0);
+      expect(
+        await createSqliteBackup(repository.databasePath, backupPath),
+      ).toBeGreaterThan(0);
+
+      const snapshot = new DatabaseSync(backupPath, { readOnly: true });
+      try {
+        expect(snapshot.prepare("PRAGMA quick_check").get()).toEqual({ quick_check: "ok" });
+        expect(snapshot.prepare("SELECT COUNT(*) AS count FROM sessions").get()).toEqual({
+          count: 1,
+        });
+      } finally {
+        snapshot.close();
+      }
     } finally {
       repository.close();
     }
