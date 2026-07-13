@@ -96,7 +96,7 @@ export const ScoreTable = ({ initialMode = "child" }: ScoreTableProps) => {
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-sm font-semibold text-emerald-900">簡易苻判定</div>
+                <div className="text-sm font-semibold text-emerald-900">簡易符判定</div>
                 <div className="mt-1 text-xs leading-5 text-emerald-700">
                   通常形の30符・40符・詳細計算推奨を最小タップで判定します。
                 </div>

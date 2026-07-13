@@ -197,6 +197,86 @@ export class SessionRepository {
       });
   }
 
+  readSessionDetail(id: string): { summary: SessionSummary; session: Session } | null {
+    const session = this.readSession(id);
+    const summary = this.listSessions().find((item) => item.id === id);
+    return session && summary ? { summary, session } : null;
+  }
+
+  reopenSession(id: string, baseVersion: number): SessionEnvelope {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.readEnvelope();
+      if (current.version !== baseVersion) {
+        throw new SessionConflictError(current);
+      }
+      const target = this.db.prepare("SELECT status FROM sessions WHERE id = ?").get(id);
+      if (!target) {
+        throw new Error("Session not found");
+      }
+      if (asString(target.status, "session status") === "voided") {
+        throw new Error("Voided session cannot be reopened");
+      }
+      const now = new Date().toISOString();
+      if (current.session && current.session.id !== id) {
+        this.db
+          .prepare(
+            "UPDATE sessions SET status = 'finalized', finalized_at = ?, updated_at = ? WHERE id = ?",
+          )
+          .run(now, now, current.session.id);
+      }
+      this.db
+        .prepare(
+          "UPDATE sessions SET status = 'active', finalized_at = NULL, updated_at = ? WHERE id = ?",
+        )
+        .run(now, id);
+      const nextVersion = current.version + 1;
+      this.db.prepare("UPDATE sessions SET version = ? WHERE id = ?").run(nextVersion, id);
+      this.writeMeta("global_version", String(nextVersion));
+      this.writeMeta("updated_at", now);
+      const session = this.readSession(id);
+      if (!session) {
+        throw new Error("Failed to reopen session");
+      }
+      this.db.exec("COMMIT");
+      return { version: nextVersion, updatedAt: now, session };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  voidSession(id: string, baseVersion: number): SessionEnvelope {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.readEnvelope();
+      if (current.version !== baseVersion) {
+        throw new SessionConflictError(current);
+      }
+      const target = this.db.prepare("SELECT status FROM sessions WHERE id = ?").get(id);
+      if (!target) {
+        throw new Error("Session not found");
+      }
+      if (asString(target.status, "session status") === "active") {
+        throw new Error("Active session cannot be voided");
+      }
+      const now = new Date().toISOString();
+      this.db
+        .prepare(
+          "UPDATE sessions SET status = 'voided', voided_at = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(now, now, id);
+      const nextVersion = current.version + 1;
+      this.writeMeta("global_version", String(nextVersion));
+      this.writeMeta("updated_at", now);
+      this.db.exec("COMMIT");
+      return { version: nextVersion, updatedAt: now, session: current.session };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   readSession(id: string): Session | null {
     const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
     if (!row) {

@@ -42,3 +42,8 @@ export type SessionSummary = {
   updatedAt: string;
   finalizedAt: string | null;
 };
+
+export type SessionDetail = {
+  summary: SessionSummary;
+  session: Session;
+};

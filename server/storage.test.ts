@@ -86,6 +86,39 @@ describe("SessionRepository", () => {
     }
   });
 
+  it("reopens a finalized session and finalizes the current one", () => {
+    const repository = createRepository();
+    try {
+      repository.saveActiveSession(createSession("first"), 0);
+      repository.saveActiveSession(createSession("second"), 1);
+      const reopened = repository.reopenSession("first", 2);
+      expect(reopened.version).toBe(3);
+      expect(reopened.session?.id).toBe("first");
+      expect(repository.listSessions().map((session) => [session.id, session.status])).toEqual([
+        ["first", "active"],
+        ["second", "finalized"],
+      ]);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("voids only finalized sessions", () => {
+    const repository = createRepository();
+    try {
+      repository.saveActiveSession(createSession("first"), 0);
+      expect(() => repository.voidSession("first", 1)).toThrow(
+        "Active session cannot be voided",
+      );
+      repository.saveActiveSession(createSession("second"), 1);
+      const envelope = repository.voidSession("first", 2);
+      expect(envelope.version).toBe(3);
+      expect(repository.readSessionDetail("first")?.summary.status).toBe("voided");
+    } finally {
+      repository.close();
+    }
+  });
+
   it("imports a valid legacy envelope only into an empty database", () => {
     const repository = createRepository();
     try {

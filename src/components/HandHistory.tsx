@@ -52,7 +52,8 @@ export const HandHistory = ({
   showRecentOnly = false,
 }: Props) => {
   const showControls = !readOnly;
-  const visibleHands = showRecentOnly ? hands.slice(-2).reverse() : hands;
+  const indexedHands = hands.map((hand, originalIndex) => ({ hand, originalIndex }));
+  const visibleHands = showRecentOnly ? indexedHands.slice(-2).reverse() : indexedHands;
   const title = showRecentOnly ? "直近半荘" : "半荘ごと";
   const countLabel = showRecentOnly
     ? `直近${visibleHands.length} 半荘`
@@ -91,12 +92,12 @@ export const HandHistory = ({
                 </tr>
               </thead>
               <tbody>
-                {visibleHands.map((hand, index) => {
+                {visibleHands.map(({ hand, originalIndex }) => {
                   const ordered = buildOrderedSeats(players, hand);
                   return (
                     <tr key={hand.id} className="border-b border-slate-100">
                       <td className="py-2 pr-3 text-slate-500">
-                        {readOnly ? hands.length - index : index + 1}
+                        {originalIndex + 1}
                       </td>
                       {ordered.map((seat) => (
                         <td key={`${hand.id}-${seat.playerId}`} className="py-2 pr-3">

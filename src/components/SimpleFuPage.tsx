@@ -252,7 +252,7 @@ export const SimpleFuPage = () => {
     <div className="h-dvh w-screen overflow-hidden bg-white text-slate-900">
       <main className="flex h-full w-full flex-col gap-4 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))]">
         <header className="flex min-h-10 items-center justify-between gap-3">
-          <h1 className="text-base font-bold text-slate-500">苻ざっくり判定</h1>
+          <h1 className="text-base font-bold text-slate-500">符ざっくり判定</h1>
           {hasStarted ? (
             <button
               type="button"

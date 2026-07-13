@@ -54,7 +54,6 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
   const [meta, setMeta] = useState<SessionMeta | null>(initialMeta ?? createEmptyMeta());
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [lastError, setLastError] = useState<string | null>(null);
-  const [lostChanges, setLostChanges] = useState(false);
   const [conflictEnvelope, setConflictEnvelope] = useState<SessionEnvelope | null>(null);
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -100,6 +99,34 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
       }
     },
     [disablePersistence, updateMeta],
+  );
+
+  const adoptEnvelope = useCallback(
+    (envelope: SessionEnvelope) => {
+      conflictRef.current = false;
+      setConflictEnvelope(null);
+      setLastError(null);
+      setSyncState("idle");
+      if (envelope.session) {
+        applyEnvelope(envelope);
+        return;
+      }
+      versionRef.current = envelope.version;
+      latestSessionRef.current = null;
+      setSession(null);
+      updateMeta({
+        ...(metaRef.current ?? createEmptyMeta()),
+        version: envelope.version,
+        updatedAt: envelope.updatedAt,
+        dirty: false,
+        lastSyncSuccessAt: Date.now(),
+        lastSyncError: null,
+      });
+      if (!disablePersistence) {
+        clearLocalSession();
+      }
+    },
+    [applyEnvelope, disablePersistence, updateMeta],
   );
 
   const flushLatestSession = useCallback(async () => {
@@ -253,29 +280,8 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
     if (!conflictEnvelope) {
       return;
     }
-    conflictRef.current = false;
-    setConflictEnvelope(null);
-    setLastError(null);
-    setSyncState("idle");
-    if (conflictEnvelope.session) {
-      applyEnvelope(conflictEnvelope);
-      return;
-    }
-    versionRef.current = conflictEnvelope.version;
-    latestSessionRef.current = null;
-    setSession(null);
-    updateMeta({
-      ...(metaRef.current ?? createEmptyMeta()),
-      version: conflictEnvelope.version,
-      updatedAt: conflictEnvelope.updatedAt,
-      dirty: false,
-      lastSyncSuccessAt: Date.now(),
-      lastSyncError: null,
-    });
-    if (!disablePersistence) {
-      clearLocalSession();
-    }
-  }, [applyEnvelope, conflictEnvelope, disablePersistence, updateMeta]);
+    adoptEnvelope(conflictEnvelope);
+  }, [adoptEnvelope, conflictEnvelope]);
 
   const overwriteRemoteConflict = useCallback(async () => {
     if (!conflictEnvelope || !latestSessionRef.current) {
@@ -293,11 +299,10 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
     syncState,
     lastError,
     meta,
-    lostChanges,
-    setLostChanges,
     retrySync,
     conflictEnvelope,
     acceptRemoteConflict,
     overwriteRemoteConflict,
+    adoptEnvelope,
   };
 };

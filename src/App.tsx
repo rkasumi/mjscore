@@ -8,6 +8,7 @@ import { PlayerManager } from "./components/PlayerManager";
 import { ReverseCondition } from "./components/ReverseCondition";
 import { ScoreTable } from "./components/ScoreTable";
 import { SessionControls } from "./components/SessionControls";
+import { SessionHistory } from "./components/SessionHistory";
 import { SimpleFuPage } from "./components/SimpleFuPage";
 import { SnapshotShare } from "./components/SnapshotShare";
 import { SummaryPanel } from "./components/SummaryPanel";
@@ -97,7 +98,7 @@ type SnapshotState = {
   error: string | null;
 };
 
-type ActivePanel = "controls" | "handInput" | "reverse" | "scoreTable";
+type ActivePanel = "controls" | "handInput" | "history" | "reverse" | "scoreTable";
 
 const getInitialPanel = (): ActivePanel | null => {
   if (window.location.hash === "#score-table" || window.location.hash === "#fu-table") {
@@ -204,18 +205,18 @@ const ScoreApp = () => {
     syncState,
     lastError,
     meta,
-    lostChanges,
-    setLostChanges,
     retrySync,
     conflictEnvelope,
     acceptRemoteConflict,
     overwriteRemoteConflict,
+    adoptEnvelope,
   } = useSessionStore({
     initialSession: snapshotMode ? snapshotSession : undefined,
     disableSync: snapshotMode,
     disablePersistence: snapshotMode,
   });
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
+  const [sessionLabelDraft, setSessionLabelDraft] = useState("");
   const [activePanel, setActivePanel] = useState<ActivePanel | null>(getInitialPanel);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -250,6 +251,9 @@ const ScoreApp = () => {
     const label = normalizedSession.label?.trim() ?? "";
     return { day, label };
   }, [normalizedSession]);
+  useEffect(() => {
+    setSessionLabelDraft(normalizedSession?.label ?? "");
+  }, [normalizedSession?.id, normalizedSession?.label]);
   const defaultSeatIds = useMemo(() => {
     if (!normalizedSession) {
       return [];
@@ -453,14 +457,6 @@ const ScoreApp = () => {
   const panelTitleId = activePanel ? `panel-title-${activePanel}` : "panel-title";
 
   useEffect(() => {
-    if (!lostChanges) {
-      return;
-    }
-    const timer = window.setTimeout(() => setLostChanges(false), 4000);
-    return () => window.clearTimeout(timer);
-  }, [lostChanges, setLostChanges]);
-
-  useEffect(() => {
     if (!activePanel) {
       if (lastTriggerRef.current) {
         lastTriggerRef.current.focus();
@@ -469,9 +465,11 @@ const ScoreApp = () => {
     }
     const focusableSelector =
       'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-    const focusable = modalRef.current
-      ? Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusableSelector))
-      : [];
+    const getFocusable = (): HTMLElement[] =>
+      modalRef.current
+        ? Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+        : [];
+    const focusable = getFocusable();
     const first = closeButtonRef.current ?? focusable[0] ?? null;
     first?.focus();
 
@@ -481,12 +479,13 @@ const ScoreApp = () => {
         setActivePanel(null);
         return;
       }
-      if (event.key !== "Tab" || focusable.length === 0) {
+      const currentFocusable = getFocusable();
+      if (event.key !== "Tab" || currentFocusable.length === 0) {
         return;
       }
       const current = document.activeElement as HTMLElement | null;
-      const firstEl = focusable[0];
-      const lastEl = focusable[focusable.length - 1];
+      const firstEl = currentFocusable[0];
+      const lastEl = currentFocusable[currentFocusable.length - 1];
       if (!firstEl || !lastEl) {
         return;
       }
@@ -543,11 +542,6 @@ const ScoreApp = () => {
             onAcceptRemoteConflict={acceptRemoteConflict}
             onOverwriteRemoteConflict={overwriteRemoteConflict}
           />
-          {lostChanges ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">
-              未送信の変更がリモート同期により上書きされました。
-            </div>
-          ) : null}
         </header>
         {displayMode ? (
           <div className="pointer-events-none fixed right-4 top-4 z-40">
@@ -651,6 +645,17 @@ const ScoreApp = () => {
                 >
                   点数表
                 </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "history"
+                      ? "bg-sky-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={handleTogglePanel("history")}
+                >
+                  結果履歴
+                </button>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <button
@@ -692,9 +697,11 @@ const ScoreApp = () => {
                           ? "卓管理"
                           : activePanel === "handInput"
                             ? "半荘入力"
-                            : activePanel === "scoreTable"
-                              ? "点数表"
-                              : "逆転条件"}
+                            : activePanel === "history"
+                              ? "結果履歴"
+                              : activePanel === "scoreTable"
+                                ? "点数表"
+                                : "逆転条件"}
                       </h3>
                       <button
                         type="button"
@@ -752,12 +759,15 @@ const ScoreApp = () => {
                                   type="text"
                                   placeholder="例: 夜 / 自宅 / 第2部"
                                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-700"
-                                  value={sessionInfo?.label ?? ""}
-                                  onChange={(event) =>
-                                    handleUpdateSessionInfo({
-                                      label: event.target.value || undefined,
-                                    })
-                                  }
+                                  value={sessionLabelDraft}
+                                  onChange={(event) => setSessionLabelDraft(event.target.value)}
+                                  onBlur={() => {
+                                    const label = sessionLabelDraft.trim();
+                                    setSessionLabelDraft(label);
+                                    if (label !== (normalizedSession.label ?? "")) {
+                                      handleUpdateSessionInfo({ label: label || undefined });
+                                    }
+                                  }}
                                 />
                               </label>
                             </div>
@@ -798,6 +808,14 @@ const ScoreApp = () => {
                     {activePanel === "scoreTable" ? (
                       <ScoreTable
                         initialMode={window.location.hash === "#fu-table" ? "fu" : "child"}
+                      />
+                    ) : null}
+                    {activePanel === "history" ? (
+                      <SessionHistory
+                        currentSessionId={normalizedSession?.id ?? null}
+                        currentVersion={meta?.version ?? null}
+                        onEnvelope={adoptEnvelope}
+                        onReopened={() => setActivePanel(null)}
                       />
                     ) : null}
                   </div>

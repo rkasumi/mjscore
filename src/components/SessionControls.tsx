@@ -31,9 +31,13 @@ export const SessionControls = ({
         <button
           type="button"
           className="rounded-2xl bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-200"
-          onClick={onResetHands}
+          onClick={() => {
+            if (window.confirm("現在の卓を確定して、新しい卓を開始しますか？")) {
+              onResetHands();
+            }
+          }}
         >
-          新規卓（履歴リセット）
+          現在の卓を確定して新規卓
         </button>
       ) : null}
     </div>
