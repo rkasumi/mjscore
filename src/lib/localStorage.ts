@@ -1,4 +1,5 @@
 import type { Session } from "../../shared/types";
+import { isSession } from "../../shared/sessionValidation";
 
 const SESSION_KEY = "mjscore.session";
 const META_KEY = "mjscore.sessionMeta";
@@ -31,7 +32,8 @@ export const loadLocalSession = (): Session | null => {
     return null;
   }
   try {
-    return JSON.parse(raw) as Session;
+    const parsed = JSON.parse(raw) as unknown;
+    return isSession(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -41,14 +43,22 @@ export const saveLocalSession = (session: Session): void => {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 };
 
-const normalizeMeta = (raw: Partial<SessionMeta>): SessionMeta => ({
-  version: raw.version ?? 0,
-  updatedAt: raw.updatedAt ?? "",
-  dirty: raw.dirty ?? false,
-  lastLocalChangeAt: raw.lastLocalChangeAt ?? 0,
-  lastSyncSuccessAt: raw.lastSyncSuccessAt ?? 0,
-  lastSyncError: raw.lastSyncError ?? null,
-});
+export const clearLocalSession = (): void => {
+  localStorage.removeItem(SESSION_KEY);
+};
+
+const normalizeMeta = (raw: Partial<SessionMeta>): SessionMeta => {
+  const lastLocalChangeAt = raw.lastLocalChangeAt ?? 0;
+  const lastSyncSuccessAt = raw.lastSyncSuccessAt ?? 0;
+  return {
+    version: raw.version ?? 0,
+    updatedAt: raw.updatedAt ?? "",
+    dirty: Boolean(raw.dirty) && lastLocalChangeAt > lastSyncSuccessAt,
+    lastLocalChangeAt,
+    lastSyncSuccessAt,
+    lastSyncError: raw.lastSyncError ?? null,
+  };
+};
 
 export const loadLocalMeta = (): SessionMeta | null => {
   const raw = localStorage.getItem(META_KEY);

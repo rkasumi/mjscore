@@ -1,14 +1,18 @@
-import type { Session } from "../../shared/types";
+import type { Session, SessionEnvelope } from "../../shared/types";
+import { parseSessionEnvelope } from "../../shared/sessionValidation";
 
-export type SessionEnvelope = {
-  version: number;
-  updatedAt: string;
-  session: Session | null;
-};
+export type { SessionEnvelope } from "../../shared/types";
+
+export class SessionSyncConflictError extends Error {
+  constructor(readonly current: SessionEnvelope) {
+    super("Session version conflict");
+    this.name = "SessionSyncConflictError";
+  }
+}
 
 export interface SessionSync {
   load(): Promise<Session | null>;
-  save(session: Session): Promise<void>;
+  save(session: Session, baseVersion: number): Promise<void>;
 }
 
 export class HttpPollingSessionSync implements SessionSync {
@@ -34,8 +38,8 @@ export class HttpPollingSessionSync implements SessionSync {
     return envelope.session;
   }
 
-  async save(session: Session): Promise<void> {
-    const envelope = await this.postSession(session);
+  async save(session: Session, baseVersion: number): Promise<void> {
+    const envelope = await this.postSession(session, baseVersion);
     this.lastEnvelope = envelope;
   }
 
@@ -72,20 +76,26 @@ export class HttpPollingSessionSync implements SessionSync {
     if (!response.ok) {
       throw new Error("Failed to load session");
     }
-    return (await response.json()) as SessionEnvelope;
+    return parseSessionEnvelope(await response.json());
   }
 
-  private async postSession(session: Session): Promise<SessionEnvelope> {
+  private async postSession(session: Session, baseVersion: number): Promise<SessionEnvelope> {
     const response = await this.fetchImpl(`${this.baseUrl}/session`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ session }),
+      body: JSON.stringify({ baseVersion, session }),
     });
+    if (response.status === 409) {
+      const payload = (await response.json()) as { current?: unknown };
+      if (payload.current) {
+        throw new SessionSyncConflictError(parseSessionEnvelope(payload.current));
+      }
+    }
     if (!response.ok) {
       throw new Error("Failed to save session");
     }
-    return (await response.json()) as SessionEnvelope;
+    return parseSessionEnvelope(await response.json());
   }
 }

@@ -10,6 +10,7 @@ It includes:
 - shareable read-only snapshots
 - a simple fu helper page
 - an optional Express API for session sync
+- SQLite-backed session history for the API
 
 ## Requirements
 
@@ -41,6 +42,34 @@ Run the API server:
 ```sh
 pnpm dev:api
 ```
+
+The API stores data in `${DATA_DIR:-/data}/mjscore.sqlite`. Writes use SQLite
+transactions and optimistic version checks. Starting a session with a new ID
+finalizes the previous active session instead of deleting it.
+
+### Migrating the legacy JSON store
+
+The API refuses to create a new database when a legacy `session.json` exists in
+the same data directory. Validate the migration first:
+
+```sh
+DATA_DIR=/path/to/data pnpm migrate:json
+```
+
+The dry run does not change files. Apply it only after confirming the output and
+backing up the data directory:
+
+```sh
+DATA_DIR=/path/to/data pnpm migrate:json -- --apply
+```
+
+For a built API image, run the equivalent compiled command:
+
+```sh
+node server/dist/server/migrate-json.js --apply
+```
+
+The migration is intentionally one-way and does not delete `session.json`.
 
 Useful checks:
 
@@ -91,6 +120,10 @@ When `config.json` is missing or invalid, the app uses `プレイヤー1` throug
 ## Self-hosting Example
 
 This repository keeps app code, local development, tests, build scripts, and a generic compose example. Deployment-specific scripts, public URLs, reverse proxy configuration, host ports, backups, and secret paths should live outside this repository.
+
+Back up the SQLite database with a SQLite-consistent snapshot mechanism. When
+WAL mode is active, copying only `mjscore.sqlite` while the API is running is not
+a complete backup.
 
 Build the SPA:
 

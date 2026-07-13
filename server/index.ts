@@ -1,8 +1,7 @@
 import express from "express";
 import cors from "cors";
 
-import type { Session } from "../shared/types.js";
-import { readEnvelope, writeEnvelope } from "./storage.js";
+import { readEnvelope, SessionConflictError, writeEnvelope } from "./storage.js";
 
 const app = express();
 const corsOrigins = (process.env.CORS_ORIGIN ?? "")
@@ -29,22 +28,24 @@ app.get("/session", async (_req, res) => {
 });
 
 app.post("/session", async (req, res) => {
-  const body = req.body as { session?: Session };
-  if (!body.session) {
-    res.status(400).json({ error: "session is required" });
+  const body = req.body as { baseVersion?: unknown; session?: unknown };
+  if (!body.session || !Number.isInteger(body.baseVersion) || Number(body.baseVersion) < 0) {
+    res.status(400).json({ error: "session and baseVersion are required" });
     return;
   }
 
   try {
-    const current = await readEnvelope();
-    const next = {
-      version: current.version + 1,
-      updatedAt: new Date().toISOString(),
-      session: body.session,
-    };
-    await writeEnvelope(next);
+    const next = await writeEnvelope(body.session, Number(body.baseVersion));
     res.json(next);
   } catch (error) {
+    if (error instanceof SessionConflictError) {
+      res.status(409).json({ error: error.message, current: error.current });
+      return;
+    }
+    if (error instanceof Error && error.message === "Invalid session payload") {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     res.status(500).json({ error: error instanceof Error ? error.message : "Unknown error" });
   }
 });

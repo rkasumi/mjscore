@@ -22,3 +22,23 @@ export type Session = {
   players: Player[];
   hands: Hand[];
 };
+
+export type SessionEnvelope = {
+  version: number;
+  updatedAt: string;
+  session: Session | null;
+};
+
+export type SessionStatus = "active" | "finalized" | "voided";
+
+export type SessionSummary = {
+  id: string;
+  day?: string;
+  label?: string;
+  status: SessionStatus;
+  handsCount: number;
+  playerNames: string[];
+  createdAt: string;
+  updatedAt: string;
+  finalizedAt: string | null;
+};

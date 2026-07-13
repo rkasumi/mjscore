@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx server/index.ts",
+    "migrate:json": "tsx server/migrate-json.ts",
     "build:web": "vite build",
-    "build:api": "tsc -p server/tsconfig.json",
+    "build:api": "tsc -p server/tsconfig.build.json",
     "build": "pnpm -s build:web && pnpm -s build:api",
     "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings=0",

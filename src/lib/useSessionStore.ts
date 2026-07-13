@@ -2,13 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Session } from "../../shared/types";
 import {
+  clearLocalSession,
   loadLocalMeta,
   loadLocalSession,
   saveLocalMeta,
   saveLocalSession,
   type SessionMeta,
 } from "./localStorage";
-import { HttpPollingSessionSync, type SessionEnvelope } from "./sessionSync";
+import {
+  HttpPollingSessionSync,
+  SessionSyncConflictError,
+  type SessionEnvelope,
+} from "./sessionSync";
 
 export type SyncState = "idle" | "syncing" | "error";
 
@@ -50,11 +55,15 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [lastError, setLastError] = useState<string | null>(null);
   const [lostChanges, setLostChanges] = useState(false);
+  const [conflictEnvelope, setConflictEnvelope] = useState<SessionEnvelope | null>(null);
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
   const sync = useMemo(() => new HttpPollingSessionSync(apiBaseUrl), [apiBaseUrl]);
   const versionRef = useRef<number | null>(meta?.version ?? null);
   const metaRef = useRef<SessionMeta | null>(meta);
+  const latestSessionRef = useRef<Session | null>(initialSession);
+  const flushPromiseRef = useRef<Promise<void> | null>(null);
+  const conflictRef = useRef(false);
 
   const updateMeta = useCallback(
     (nextMeta: SessionMeta) => {
@@ -68,7 +77,7 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
   );
 
   const applyEnvelope = useCallback(
-    (envelope: SessionEnvelope, source: "poll" | "post" | "load") => {
+    (envelope: SessionEnvelope) => {
       if (!envelope.session) {
         return;
       }
@@ -78,15 +87,13 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
         ...prevMeta,
         version: envelope.version,
         updatedAt: envelope.updatedAt,
-        dirty: source === "poll" ? false : prevMeta.dirty,
+        dirty: false,
         lastSyncSuccessAt: now,
         lastSyncError: null,
       };
       versionRef.current = envelope.version;
       setSession(envelope.session);
-      if (source === "poll" && prevMeta.dirty) {
-        setLostChanges(true);
-      }
+      latestSessionRef.current = envelope.session;
       updateMeta(nextMeta);
       if (!disablePersistence) {
         saveLocalSession(envelope.session);
@@ -95,53 +102,108 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
     [disablePersistence, updateMeta],
   );
 
+  const flushLatestSession = useCallback(async () => {
+    if (disableSync || conflictRef.current) {
+      return;
+    }
+    setSyncState("syncing");
+    setLastError(null);
+
+    while (!conflictRef.current) {
+      const target = latestSessionRef.current;
+      if (!target) {
+        break;
+      }
+      const baseVersion = versionRef.current ?? 0;
+      try {
+        await sync.save(target, baseVersion);
+        const envelope = sync.getLastEnvelope();
+        if (!envelope) {
+          throw new Error("Sync response was empty");
+        }
+        versionRef.current = envelope.version;
+        const isLatest = latestSessionRef.current === target;
+        const currentMeta = metaRef.current ?? createEmptyMeta();
+        updateMeta({
+          ...currentMeta,
+          version: envelope.version,
+          updatedAt: envelope.updatedAt,
+          dirty: !isLatest,
+          lastSyncSuccessAt: Date.now(),
+          lastSyncError: null,
+        });
+        if (isLatest) {
+          setSession(envelope.session);
+          latestSessionRef.current = envelope.session;
+          if (!disablePersistence && envelope.session) {
+            saveLocalSession(envelope.session);
+          }
+          setSyncState("idle");
+          return;
+        }
+      } catch (error) {
+        const currentMeta = metaRef.current ?? createEmptyMeta();
+        if (error instanceof SessionSyncConflictError) {
+          conflictRef.current = true;
+          setConflictEnvelope(error.current);
+          versionRef.current = error.current.version;
+          const message = "他の端末で更新されています。内容を確認してから再同期してください。";
+          setLastError(message);
+          updateMeta({
+            ...currentMeta,
+            version: error.current.version,
+            updatedAt: error.current.updatedAt,
+            dirty: true,
+            lastSyncError: { message, at: Date.now() },
+          });
+        } else {
+          const message = error instanceof Error ? error.message : "Sync failed";
+          setLastError(message);
+          updateMeta({
+            ...currentMeta,
+            dirty: true,
+            lastSyncError: { message, at: Date.now() },
+          });
+        }
+        setSyncState("error");
+        return;
+      }
+    }
+  }, [disablePersistence, disableSync, sync, updateMeta]);
+
+  const startFlush = useCallback((): Promise<void> => {
+    if (flushPromiseRef.current) {
+      return flushPromiseRef.current;
+    }
+    const promise = flushLatestSession();
+    flushPromiseRef.current = promise;
+    void promise.finally(() => {
+      if (flushPromiseRef.current === promise) {
+        flushPromiseRef.current = null;
+      }
+    });
+    return promise;
+  }, [flushLatestSession]);
+
   const saveSession = useCallback(
     async (next: Session) => {
       const now = Date.now();
       const baseMeta = metaRef.current ?? createEmptyMeta();
+      latestSessionRef.current = next;
       updateMeta({
         ...baseMeta,
         dirty: true,
         lastLocalChangeAt: now,
       });
-      const currentMeta = metaRef.current ?? createEmptyMeta();
       setSession(next);
       if (!disablePersistence) {
         saveLocalSession(next);
       }
-      if (disableSync) {
-        return;
-      }
-      setSyncState("syncing");
-      setLastError(null);
-
-      try {
-        await sync.save(next);
-        const envelope = sync.getLastEnvelope();
-        if (envelope) {
-          applyEnvelope(envelope, "post");
-        } else {
-          const successMeta: SessionMeta = {
-            ...currentMeta,
-            dirty: false,
-            lastSyncSuccessAt: Date.now(),
-            lastSyncError: null,
-          };
-          updateMeta(successMeta);
-        }
-        setSyncState("idle");
-      } catch (error) {
-        setSyncState("error");
-        const message = error instanceof Error ? error.message : "Sync failed";
-        setLastError(message);
-        updateMeta({
-          ...currentMeta,
-          dirty: true,
-          lastSyncError: { message, at: Date.now() },
-        });
+      if (!disableSync && !conflictRef.current) {
+        await startFlush();
       }
     },
-    [applyEnvelope, disablePersistence, disableSync, sync, updateMeta],
+    [disablePersistence, disableSync, startFlush, updateMeta],
   );
 
   useEffect(() => {
@@ -152,8 +214,13 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
       try {
         const remoteSession = await sync.load();
         const envelope = sync.getLastEnvelope();
-        if (remoteSession && envelope && shouldApplyEnvelope(envelope, versionRef.current)) {
-          applyEnvelope(envelope, "load");
+        if (
+          remoteSession &&
+          envelope &&
+          !metaRef.current?.dirty &&
+          shouldApplyEnvelope(envelope, versionRef.current)
+        ) {
+          applyEnvelope(envelope);
         }
       } catch {
         // Ignore remote load failure.
@@ -168,44 +235,56 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
       return;
     }
     return sync.startPolling((envelope) => {
-      if (shouldApplyEnvelope(envelope, versionRef.current)) {
-        applyEnvelope(envelope, "poll");
+      if (!metaRef.current?.dirty && shouldApplyEnvelope(envelope, versionRef.current)) {
+        applyEnvelope(envelope);
       }
     });
   }, [applyEnvelope, disableSync, sync]);
 
   const retrySync = useCallback(async () => {
-    if (disableSync || !session) {
+    if (disableSync || !session || conflictRef.current) {
       return;
     }
-    setSyncState("syncing");
-    setLastError(null);
-    const prevMeta = metaRef.current ?? createEmptyMeta();
-    try {
-      await sync.save(session);
-      const envelope = sync.getLastEnvelope();
-      if (envelope) {
-        applyEnvelope(envelope, "post");
-      } else {
-        updateMeta({
-          ...prevMeta,
-          dirty: false,
-          lastSyncSuccessAt: Date.now(),
-          lastSyncError: null,
-        });
-      }
-      setSyncState("idle");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Sync failed";
-      setSyncState("error");
-      setLastError(message);
-      updateMeta({
-        ...prevMeta,
-        dirty: true,
-        lastSyncError: { message, at: Date.now() },
-      });
+    latestSessionRef.current = session;
+    await startFlush();
+  }, [disableSync, session, startFlush]);
+
+  const acceptRemoteConflict = useCallback(() => {
+    if (!conflictEnvelope) {
+      return;
     }
-  }, [applyEnvelope, disableSync, session, sync, updateMeta]);
+    conflictRef.current = false;
+    setConflictEnvelope(null);
+    setLastError(null);
+    setSyncState("idle");
+    if (conflictEnvelope.session) {
+      applyEnvelope(conflictEnvelope);
+      return;
+    }
+    versionRef.current = conflictEnvelope.version;
+    latestSessionRef.current = null;
+    setSession(null);
+    updateMeta({
+      ...(metaRef.current ?? createEmptyMeta()),
+      version: conflictEnvelope.version,
+      updatedAt: conflictEnvelope.updatedAt,
+      dirty: false,
+      lastSyncSuccessAt: Date.now(),
+      lastSyncError: null,
+    });
+    if (!disablePersistence) {
+      clearLocalSession();
+    }
+  }, [applyEnvelope, conflictEnvelope, disablePersistence, updateMeta]);
+
+  const overwriteRemoteConflict = useCallback(async () => {
+    if (!conflictEnvelope || !latestSessionRef.current) {
+      return;
+    }
+    conflictRef.current = false;
+    setConflictEnvelope(null);
+    await startFlush();
+  }, [conflictEnvelope, startFlush]);
 
   return {
     session,
@@ -217,5 +296,8 @@ export const useSessionStore = (options: UseSessionStoreOptions = {}) => {
     lostChanges,
     setLostChanges,
     retrySync,
+    conflictEnvelope,
+    acceptRemoteConflict,
+    overwriteRemoteConflict,
   };
 };

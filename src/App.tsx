@@ -207,6 +207,9 @@ const ScoreApp = () => {
     lostChanges,
     setLostChanges,
     retrySync,
+    conflictEnvelope,
+    acceptRemoteConflict,
+    overwriteRemoteConflict,
   } = useSessionStore({
     initialSession: snapshotMode ? snapshotSession : undefined,
     disableSync: snapshotMode,
@@ -535,7 +538,10 @@ const ScoreApp = () => {
             displayMode={displayMode}
             snapshotMode={snapshotMode}
             snapshotError={snapshotError}
+            hasConflict={Boolean(conflictEnvelope)}
             onRetrySync={retrySync}
+            onAcceptRemoteConflict={acceptRemoteConflict}
+            onOverwriteRemoteConflict={overwriteRemoteConflict}
           />
           {lostChanges ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">

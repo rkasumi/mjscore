@@ -1,39 +1,412 @@
-import { promises as fs } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 
-import type { Session } from "../shared/types.js";
+import { parseSession } from "../shared/sessionValidation.js";
+import type {
+  Hand,
+  HandSeat,
+  Player,
+  Session,
+  SessionEnvelope,
+  SessionStatus,
+  SessionSummary,
+} from "../shared/types.js";
 
-export type SessionEnvelope = {
-  version: number;
-  updatedAt: string;
-  session: Session | null;
+const SCHEMA_VERSION = 1;
+
+const asString = (value: SQLOutputValue | undefined, field: string): string => {
+  if (typeof value !== "string") {
+    throw new Error(`Invalid ${field} in database`);
+  }
+  return value;
 };
+
+const asNullableString = (value: SQLOutputValue | undefined): string | null =>
+  typeof value === "string" ? value : null;
+
+const asNumber = (value: SQLOutputValue | undefined, field: string): number => {
+  if (typeof value !== "number") {
+    throw new Error(`Invalid ${field} in database`);
+  }
+  return value;
+};
+
+const isStatus = (value: string): value is SessionStatus =>
+  value === "active" || value === "finalized" || value === "voided";
+
+export class SessionConflictError extends Error {
+  constructor(readonly current: SessionEnvelope) {
+    super("Session version conflict");
+    this.name = "SessionConflictError";
+  }
+}
+
+export class LegacyDataMigrationRequiredError extends Error {
+  constructor(readonly legacyPath: string) {
+    super(`Legacy data exists at ${legacyPath}; run the JSON migration before starting the API`);
+    this.name = "LegacyDataMigrationRequiredError";
+  }
+}
+
+type RepositoryOptions = {
+  allowLegacyData?: boolean;
+};
+
+export class SessionRepository {
+  private readonly db: DatabaseSync;
+
+  constructor(
+    readonly databasePath: string,
+    options: RepositoryOptions = {},
+  ) {
+    const directory = path.dirname(databasePath);
+    mkdirSync(directory, { recursive: true });
+    const legacyPath = path.join(directory, "session.json");
+    if (!options.allowLegacyData && !existsSync(databasePath) && existsSync(legacyPath)) {
+      throw new LegacyDataMigrationRequiredError(legacyPath);
+    }
+    this.db = new DatabaseSync(databasePath);
+    this.db.exec("PRAGMA foreign_keys = ON");
+    this.db.exec("PRAGMA journal_mode = WAL");
+    this.db.exec("PRAGMA synchronous = FULL");
+    this.initializeSchema();
+    const legacyImport = this.db
+      .prepare("SELECT value FROM metadata WHERE key = 'legacy_import_completed'")
+      .get();
+    if (
+      !options.allowLegacyData &&
+      existsSync(legacyPath) &&
+      legacyImport?.value !== "1"
+    ) {
+      this.db.close();
+      throw new LegacyDataMigrationRequiredError(legacyPath);
+    }
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  readEnvelope(): SessionEnvelope {
+    const version = this.readMetaNumber("global_version");
+    const updatedAt = this.readMetaString("updated_at");
+    const row = this.db
+      .prepare("SELECT id FROM sessions WHERE status = 'active' LIMIT 1")
+      .get();
+    const session = row ? this.readSession(asString(row.id, "session id")) : null;
+    return { version, updatedAt, session };
+  }
+
+  saveActiveSession(sessionValue: unknown, baseVersion: number): SessionEnvelope {
+    const session = parseSession(sessionValue);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.readEnvelope();
+      if (current.version !== baseVersion) {
+        throw new SessionConflictError(current);
+      }
+
+      const now = new Date().toISOString();
+      const nextVersion = current.version + 1;
+      if (current.session && current.session.id !== session.id) {
+        this.db
+          .prepare(
+            "UPDATE sessions SET status = 'finalized', finalized_at = ?, updated_at = ? WHERE id = ?",
+          )
+          .run(now, now, current.session.id);
+      }
+      this.replaceSession(session, "active", nextVersion, now);
+      this.writeMeta("global_version", String(nextVersion));
+      this.writeMeta("updated_at", now);
+      this.db.exec("COMMIT");
+      return { version: nextVersion, updatedAt: now, session };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  importLegacyEnvelope(envelopeValue: unknown): SessionEnvelope {
+    if (!envelopeValue || typeof envelopeValue !== "object" || Array.isArray(envelopeValue)) {
+      throw new Error("Invalid legacy envelope");
+    }
+    const candidate = envelopeValue as Record<string, unknown>;
+    const version = candidate.version;
+    const updatedAt = candidate.updatedAt;
+    if (!Number.isInteger(version) || typeof version !== "number" || version < 0) {
+      throw new Error("Invalid legacy envelope version");
+    }
+    if (typeof updatedAt !== "string" || Number.isNaN(Date.parse(updatedAt))) {
+      throw new Error("Invalid legacy envelope timestamp");
+    }
+    const session = candidate.session === null ? null : parseSession(candidate.session);
+
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const countRow = this.db.prepare("SELECT COUNT(*) AS count FROM sessions").get();
+      if (asNumber(countRow?.count, "session count") > 0 || this.readMetaNumber("global_version") > 0) {
+        throw new Error("Database is not empty");
+      }
+      if (session) {
+        this.replaceSession(session, "active", version, updatedAt);
+      }
+      this.writeMeta("global_version", String(version));
+      this.writeMeta("updated_at", updatedAt);
+      this.writeMeta("legacy_import_completed", "1");
+      this.db.exec("COMMIT");
+      return { version, updatedAt, session };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  listSessions(): SessionSummary[] {
+    return this.db
+      .prepare(
+        `SELECT s.id, s.day, s.label, s.status, s.created_at, s.updated_at, s.finalized_at,
+                (SELECT COUNT(*) FROM hands h
+                  WHERE h.session_id = s.id AND h.voided_at IS NULL) AS hands_count,
+                (SELECT COALESCE(GROUP_CONCAT(ordered.display_name, char(31)), '')
+                   FROM (SELECT display_name FROM session_players
+                          WHERE session_id = s.id ORDER BY position) ordered) AS player_names
+           FROM sessions s
+          ORDER BY CASE s.status WHEN 'active' THEN 0 WHEN 'finalized' THEN 1 ELSE 2 END,
+                   COALESCE(s.day, substr(s.created_at, 1, 10)) DESC,
+                   s.created_at DESC`,
+      )
+      .all()
+      .map((row) => {
+        const status = asString(row.status, "session status");
+        if (!isStatus(status)) {
+          throw new Error("Invalid session status in database");
+        }
+        const names = asString(row.player_names, "player names");
+        return {
+          id: asString(row.id, "session id"),
+          day: asNullableString(row.day) ?? undefined,
+          label: asNullableString(row.label) ?? undefined,
+          status,
+          handsCount: asNumber(row.hands_count, "hands count"),
+          playerNames: names ? names.split(String.fromCharCode(31)) : [],
+          createdAt: asString(row.created_at, "created at"),
+          updatedAt: asString(row.updated_at, "updated at"),
+          finalizedAt: asNullableString(row.finalized_at),
+        };
+      });
+  }
+
+  readSession(id: string): Session | null {
+    const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
+    if (!row) {
+      return null;
+    }
+    const players: Player[] = this.db
+      .prepare(
+        "SELECT player_id, display_name FROM session_players WHERE session_id = ? ORDER BY position",
+      )
+      .all(id)
+      .map((playerRow) => ({
+        id: asString(playerRow.player_id, "player id"),
+        name: asString(playerRow.display_name, "player name"),
+      }));
+    const hands: Hand[] = this.db
+      .prepare(
+        "SELECT id, created_at FROM hands WHERE session_id = ? AND voided_at IS NULL ORDER BY sequence",
+      )
+      .all(id)
+      .map((handRow) => {
+        const handId = asString(handRow.id, "hand id");
+        const seats: HandSeat[] = this.db
+          .prepare(
+            "SELECT player_id, score FROM hand_results WHERE hand_id = ? ORDER BY seat_index",
+          )
+          .all(handId)
+          .map((seatRow) => ({
+            playerId: asString(seatRow.player_id, "seat player id"),
+            score: asNumber(seatRow.score, "seat score"),
+          }));
+        return {
+          id: handId,
+          createdAt: asString(handRow.created_at, "hand created at"),
+          seats,
+        };
+      });
+    return parseSession({
+      id: asString(row.id, "session id"),
+      createdAt: asString(row.created_at, "session created at"),
+      day: asNullableString(row.day) ?? undefined,
+      label: asNullableString(row.label) ?? undefined,
+      players,
+      hands,
+    });
+  }
+
+  private initializeSchema(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS players (
+        id TEXT PRIMARY KEY,
+        current_name TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        day TEXT,
+        label TEXT,
+        status TEXT NOT NULL CHECK (status IN ('active', 'finalized', 'voided')),
+        ruleset_json TEXT NOT NULL DEFAULT '{"version":1}',
+        version INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        finalized_at TEXT,
+        voided_at TEXT
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS sessions_one_active
+        ON sessions(status) WHERE status = 'active';
+      CREATE TABLE IF NOT EXISTS session_players (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        player_id TEXT NOT NULL REFERENCES players(id),
+        display_name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        PRIMARY KEY (session_id, player_id),
+        UNIQUE (session_id, position)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS hands (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        voided_at TEXT,
+        UNIQUE (session_id, sequence)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS hand_results (
+        hand_id TEXT NOT NULL REFERENCES hands(id) ON DELETE CASCADE,
+        player_id TEXT NOT NULL REFERENCES players(id),
+        seat_index INTEGER NOT NULL,
+        score INTEGER NOT NULL,
+        PRIMARY KEY (hand_id, player_id),
+        UNIQUE (hand_id, seat_index)
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS hands_session_id ON hands(session_id);
+      CREATE INDEX IF NOT EXISTS hand_results_player_id ON hand_results(player_id);
+    `);
+    const now = new Date().toISOString();
+    this.db
+      .prepare("INSERT OR IGNORE INTO metadata(key, value) VALUES ('schema_version', ?)")
+      .run(String(SCHEMA_VERSION));
+    this.db
+      .prepare("INSERT OR IGNORE INTO metadata(key, value) VALUES ('global_version', '0')")
+      .run();
+    this.db
+      .prepare("INSERT OR IGNORE INTO metadata(key, value) VALUES ('updated_at', ?)")
+      .run(now);
+    if (this.readMetaNumber("schema_version") !== SCHEMA_VERSION) {
+      throw new Error("Unsupported database schema version");
+    }
+  }
+
+  private replaceSession(
+    session: Session,
+    status: SessionStatus,
+    version: number,
+    updatedAt: string,
+  ): void {
+    for (const player of session.players) {
+      this.db
+        .prepare(
+          `INSERT INTO players(id, current_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET current_name = excluded.current_name, updated_at = excluded.updated_at`,
+        )
+        .run(player.id, player.name, updatedAt, updatedAt);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO sessions(id, day, label, status, version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           day = excluded.day,
+           label = excluded.label,
+           status = excluded.status,
+           version = excluded.version,
+           updated_at = excluded.updated_at,
+           finalized_at = NULL,
+           voided_at = NULL`,
+      )
+      .run(
+        session.id,
+        session.day ?? null,
+        session.label ?? null,
+        status,
+        version,
+        session.createdAt,
+        updatedAt,
+      );
+    this.db.prepare("DELETE FROM hands WHERE session_id = ?").run(session.id);
+    this.db.prepare("DELETE FROM session_players WHERE session_id = ?").run(session.id);
+    session.players.forEach((player, position) => {
+      this.db
+        .prepare(
+          "INSERT INTO session_players(session_id, player_id, display_name, position) VALUES (?, ?, ?, ?)",
+        )
+        .run(session.id, player.id, player.name, position);
+    });
+    session.hands.forEach((hand, sequence) => {
+      this.db
+        .prepare("INSERT INTO hands(id, session_id, sequence, created_at) VALUES (?, ?, ?, ?)")
+        .run(hand.id, session.id, sequence, hand.createdAt);
+      hand.seats.forEach((seat, seatIndex) => {
+        this.db
+          .prepare(
+            "INSERT INTO hand_results(hand_id, player_id, seat_index, score) VALUES (?, ?, ?, ?)",
+          )
+          .run(hand.id, seat.playerId, seatIndex, seat.score);
+      });
+    });
+  }
+
+  private readMetaString(key: string): string {
+    const row = this.db.prepare("SELECT value FROM metadata WHERE key = ?").get(key);
+    return asString(row?.value, `metadata ${key}`);
+  }
+
+  private readMetaNumber(key: string): number {
+    const value = Number(this.readMetaString(key));
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`Invalid numeric metadata ${key}`);
+    }
+    return value;
+  }
+
+  private writeMeta(key: string, value: string): void {
+    this.db
+      .prepare(
+        "INSERT INTO metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(key, value);
+  }
+}
 
 const dataDir = process.env.DATA_DIR ?? "/data";
-const filePath = path.join(dataDir, "session.json");
+const databasePath = path.join(dataDir, "mjscore.sqlite");
+let defaultRepository: SessionRepository | null = null;
 
-const defaultEnvelope = (): SessionEnvelope => ({
-  version: 0,
-  updatedAt: new Date().toISOString(),
-  session: null,
-});
-
-const ensureDir = async () => {
-  await fs.mkdir(dataDir, { recursive: true });
+export const getDefaultRepository = (): SessionRepository => {
+  defaultRepository ??= new SessionRepository(databasePath);
+  return defaultRepository;
 };
 
-export const readEnvelope = async (): Promise<SessionEnvelope> => {
-  try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as SessionEnvelope;
-  } catch {
-    const envelope = defaultEnvelope();
-    await writeEnvelope(envelope);
-    return envelope;
-  }
-};
+export const readEnvelope = async (): Promise<SessionEnvelope> =>
+  getDefaultRepository().readEnvelope();
 
-export const writeEnvelope = async (envelope: SessionEnvelope): Promise<void> => {
-  await ensureDir();
-  await fs.writeFile(filePath, JSON.stringify(envelope, null, 2), "utf-8");
-};
+export const writeEnvelope = async (
+  session: unknown,
+  baseVersion: number,
+): Promise<SessionEnvelope> => getDefaultRepository().saveActiveSession(session, baseVersion);
