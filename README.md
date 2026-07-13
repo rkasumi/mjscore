@@ -15,7 +15,7 @@ It includes:
 
 ## Requirements
 
-- Node.js 24
+- Node.js 24.18.x
 - pnpm 10.33.4
 
 Enable Corepack if pnpm is not already available:
