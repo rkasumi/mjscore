@@ -76,17 +76,28 @@ export const fetchSessionDetail = async (id: string): Promise<SessionDetail> => 
   };
 };
 
-export const fetchStoredPlayers = async (): Promise<Player[]> => {
+type StoredPlayers = {
+  players: Player[];
+  knownPlayers: Player[];
+};
+
+const parseStoredPlayer = (value: unknown): Player => {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
+    throw new Error("Invalid stored player");
+  }
+  return { id: value.id, name: value.name };
+};
+
+export const fetchStoredPlayers = async (): Promise<StoredPlayers> => {
   const payload = await readJson(await fetch(`${apiBaseUrl}/players`));
   if (!isRecord(payload) || !Array.isArray(payload.players)) {
     throw new Error("Invalid players response");
   }
-  return payload.players.map((value) => {
-    if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") {
-      throw new Error("Invalid stored player");
-    }
-    return { id: value.id, name: value.name };
-  });
+  const players = payload.players.map(parseStoredPlayer);
+  const knownPlayers = Array.isArray(payload.knownPlayers)
+    ? payload.knownPlayers.map(parseStoredPlayer)
+    : players;
+  return { players, knownPlayers };
 };
 
 const mutateSession = async (

@@ -176,7 +176,7 @@ export const SessionHistory = ({
                 ) : null}
               </div>
             </div>
-            <SnapshotShare session={detail.session} />
+            <SnapshotShare session={detail.session} status={detail.summary.status} />
             <HandHistory
               players={detail.session.players}
               hands={detail.session.hands}

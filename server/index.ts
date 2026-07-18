@@ -5,6 +5,7 @@ import { isDateOnly } from "../shared/sessionValidation.js";
 import { buildAnalytics } from "./analytics.js";
 import {
   getDefaultRepository,
+  PlayerIdentityConflictError,
   readEnvelope,
   SessionConflictError,
   writeEnvelope,
@@ -84,7 +85,11 @@ app.get("/seasons", (_req, res) => {
 
 app.get("/players", (_req, res) => {
   try {
-    res.json({ players: getDefaultRepository().listKnownPlayers() });
+    const repository = getDefaultRepository();
+    res.json({
+      players: repository.listKnownPlayers(),
+      knownPlayers: repository.listAllPlayers(),
+    });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : "Unknown error" });
   }
@@ -123,6 +128,10 @@ app.post("/session", async (req, res) => {
       return;
     }
     if (error instanceof Error && error.message === "Invalid session payload") {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    if (error instanceof PlayerIdentityConflictError) {
       res.status(400).json({ error: error.message });
       return;
     }

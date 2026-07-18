@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Hand, Player } from "../../shared/types";
 
@@ -9,10 +9,11 @@ type DraftSlot = {
 
 type Props = {
   players: Player[];
+  knownPlayers: Player[];
   hands: Hand[];
   fixedPlayerCount?: number;
-  onAdd: (name: string) => void;
-  onRename: (id: string, name: string) => void;
+  onAdd: (name: string) => boolean;
+  onReplace: (id: string, name: string) => boolean;
   onRemove: (id: string) => void;
 };
 
@@ -21,14 +22,23 @@ const ensureSlots = (count: number): DraftSlot[] =>
 
 export const PlayerManager = ({
   players,
+  knownPlayers,
   hands,
   fixedPlayerCount = 0,
   onAdd,
-  onRename,
+  onReplace,
   onRemove,
 }: Props) => {
   const [draftSlots, setDraftSlots] = useState<DraftSlot[]>(ensureSlots(4));
+  const [playerNameDrafts, setPlayerNameDrafts] = useState<Record<string, string>>({});
   const [extraName, setExtraName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPlayerNameDrafts(
+      Object.fromEntries(players.map((player) => [player.id, player.name])),
+    );
+  }, [players]);
 
   const usedPlayers = useMemo(() => {
     const ids = new Set<string>();
@@ -44,6 +54,22 @@ export const PlayerManager = ({
   const slots = ensureSlots(baseSlots);
 
   const canAddExtra = players.length < 6 && extraName.trim().length > 0;
+  const rosterIds = useMemo(() => new Set(players.map((player) => player.id)), [players]);
+  const availableKnownPlayers = useMemo(
+    () => knownPlayers.filter((player) => !rosterIds.has(player.id)),
+    [knownPlayers, rosterIds],
+  );
+  const knownPlayersListId = "known-player-names";
+
+  const commitReplacement = (player: Player) => {
+    const name = (playerNameDrafts[player.id] ?? player.name).trim();
+    if (!name || !onReplace(player.id, name)) {
+      setPlayerNameDrafts((current) => ({ ...current, [player.id]: player.name }));
+      setError("同じ人物が登録済みか、履歴に使用済みのため変更できません。");
+      return;
+    }
+    setError(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -69,9 +95,35 @@ export const PlayerManager = ({
                 className="flex items-center gap-2 flex-nowrap"
               >
                 <input
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-                  value={player.name}
-                  onChange={(event) => onRename(player.id, event.target.value)}
+                  className={`min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm ${
+                    isLocked
+                      ? "cursor-not-allowed bg-slate-100 text-slate-500"
+                      : "bg-white"
+                  }`}
+                  aria-label={`${player.name}の参加者`}
+                  list={knownPlayersListId}
+                  value={playerNameDrafts[player.id] ?? player.name}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setPlayerNameDrafts((current) => ({
+                      ...current,
+                      [player.id]: value,
+                    }));
+                  }}
+                  onBlur={() => commitReplacement(player)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === "Escape") {
+                      setPlayerNameDrafts((current) => ({
+                        ...current,
+                        [player.id]: player.name,
+                      }));
+                    }
+                  }}
+                  disabled={isLocked}
                 />
                 <button
                   type="button"
@@ -104,6 +156,7 @@ export const PlayerManager = ({
             >
               <input
                 className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                list={knownPlayersListId}
                 placeholder={`プレイヤー${index + 1}`}
                 value={draft.name}
                 onChange={(event) => {
@@ -126,7 +179,11 @@ export const PlayerManager = ({
                   if (!canAdd) {
                     return;
                   }
-                  onAdd(draft.name.trim());
+                  if (!onAdd(draft.name.trim())) {
+                    setError("同じ人物は複数回登録できません。");
+                    return;
+                  }
+                  setError(null);
                   setDraftSlots((prev) => {
                     const next = [...prev];
                     next[index] = { ...draft, name: "" };
@@ -144,6 +201,7 @@ export const PlayerManager = ({
       <div className="flex flex-row items-center gap-2">
         <input
           className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white/80 px-4 py-2 text-sm"
+          list={knownPlayersListId}
           placeholder="追加プレイヤー（5人目以降）"
           value={extraName}
           onChange={(event) => setExtraName(event.target.value)}
@@ -159,7 +217,11 @@ export const PlayerManager = ({
             if (!canAddExtra) {
               return;
             }
-            onAdd(extraName.trim());
+            if (!onAdd(extraName.trim())) {
+              setError("同じ人物は複数回登録できません。");
+              return;
+            }
+            setError(null);
             setExtraName("");
           }}
           disabled={!canAddExtra}
@@ -167,6 +229,12 @@ export const PlayerManager = ({
           追加
         </button>
       </div>
+      <datalist id={knownPlayersListId}>
+        {availableKnownPlayers.map((player) => (
+          <option key={player.id} value={player.name} />
+        ))}
+      </datalist>
+      {error ? <p className="text-xs text-rose-600">{error}</p> : null}
     </div>
   );
 };

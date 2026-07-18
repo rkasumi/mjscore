@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Session } from "../shared/types.js";
 import {
   LegacyDataMigrationRequiredError,
+  PlayerIdentityConflictError,
   SessionConflictError,
   SessionRepository,
 } from "./storage.js";
@@ -220,6 +221,44 @@ describe("SessionRepository", () => {
         "Invalid session payload",
       );
       expect(repository.readEnvelope().session).toBeNull();
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("lists the full player catalog and rejects duplicate identity names", () => {
+    const repository = createRepository();
+    try {
+      repository.saveActiveSession(createSession("first"), 0);
+      const second = createSession("second");
+      const secondIds = ["e", "f", "g", "h"];
+      second.players = second.players.map((player, index) => ({
+        ...player,
+        id: secondIds[index]!,
+        name: secondIds[index]!.toUpperCase(),
+      }));
+      second.hands = second.hands.map((hand) => ({
+        ...hand,
+        seats: hand.seats.map((seat, index) => ({
+          ...seat,
+          playerId: secondIds[index]!,
+        })),
+      }));
+      repository.saveActiveSession(second, 1);
+
+      expect(repository.listKnownPlayers()).toEqual(second.players);
+      expect(repository.listAllPlayers()).toHaveLength(8);
+
+      const conflicting = {
+        ...second,
+        players: second.players.map((player, index) =>
+          index === 0 ? { ...player, name: " Ａ " } : player,
+        ),
+      };
+      expect(() => repository.saveActiveSession(conflicting, 2)).toThrow(
+        PlayerIdentityConflictError,
+      );
+      expect(repository.readEnvelope().session).toEqual(second);
     } finally {
       repository.close();
     }

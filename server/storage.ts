@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 
+import { normalizePlayerName } from "../shared/playerIdentity.js";
 import { isDateOnly, parseSession } from "../shared/sessionValidation.js";
 import type {
   Hand,
@@ -41,6 +42,13 @@ export class SessionConflictError extends Error {
   constructor(readonly current: SessionEnvelope) {
     super("Session version conflict");
     this.name = "SessionConflictError";
+  }
+}
+
+export class PlayerIdentityConflictError extends Error {
+  constructor(readonly playerName: string) {
+    super(`Player name already belongs to another identity: ${playerName}`);
+    this.name = "PlayerIdentityConflictError";
   }
 }
 
@@ -109,6 +117,7 @@ export class SessionRepository {
         throw new SessionConflictError(current);
       }
 
+      this.assertPlayerIdentityNames(session);
       const now = new Date().toISOString();
       const nextVersion = current.version + 1;
       if (current.session && current.session.id !== session.id) {
@@ -219,6 +228,18 @@ export class SessionRepository {
   listKnownPlayers(): Player[] {
     const latest = this.listSessions().find((summary) => summary.status !== "voided");
     return latest ? (this.readSession(latest.id)?.players ?? []) : [];
+  }
+
+  listAllPlayers(): Player[] {
+    return this.db
+      .prepare(
+        "SELECT id, current_name FROM players WHERE active = 1 ORDER BY current_name, created_at, id",
+      )
+      .all()
+      .map((row) => ({
+        id: asString(row.id, "player id"),
+        name: asString(row.current_name, "player name"),
+      }));
   }
 
   listSeasons(): Season[] {
@@ -541,6 +562,32 @@ export class SessionRepository {
           .run(hand.id, seat.playerId, seatIndex, seat.score);
       });
     });
+  }
+
+  private assertPlayerIdentityNames(session: Session): void {
+    const ownerByName = new Map<string, string>();
+    for (const player of this.listAllPlayers()) {
+      const normalizedName = normalizePlayerName(player.name);
+      const ownerId = ownerByName.get(normalizedName);
+      if (ownerId && ownerId !== player.id) {
+        throw new PlayerIdentityConflictError(player.name);
+      }
+      ownerByName.set(normalizedName, player.id);
+    }
+
+    const sessionOwnerByName = new Map<string, string>();
+    for (const player of session.players) {
+      const normalizedName = normalizePlayerName(player.name);
+      const sessionOwnerId = sessionOwnerByName.get(normalizedName);
+      if (sessionOwnerId && sessionOwnerId !== player.id) {
+        throw new PlayerIdentityConflictError(player.name);
+      }
+      const knownOwnerId = ownerByName.get(normalizedName);
+      if (knownOwnerId && knownOwnerId !== player.id) {
+        throw new PlayerIdentityConflictError(player.name);
+      }
+      sessionOwnerByName.set(normalizedName, player.id);
+    }
   }
 
   private readMetaString(key: string): string {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
+import { findPlayerByName, normalizePlayerName } from "../shared/playerIdentity";
 import type { Hand, HandSeat, Player, Session } from "../shared/types";
 import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
 import { DisplayInsights } from "./components/DisplayInsights";
@@ -153,6 +154,12 @@ const removeHand = (hands: Hand[], handId: string): Hand[] =>
 const canRemovePlayer = (session: Session, playerId: string): boolean =>
   !session.hands.some((hand) => hand.seats.some((seat) => seat.playerId === playerId));
 
+const mergeKnownPlayers = (current: Player[], incoming: readonly Player[]): Player[] => {
+  const merged = new Map(current.map((player) => [player.id, player]));
+  incoming.forEach((player) => merged.set(player.id, player));
+  return [...merged.values()];
+};
+
 const parseSnapshotFromLocation = (): SnapshotState => {
   const pathEncoded = getSnapshotPathEncoded(window.location.pathname);
   if (pathEncoded) {
@@ -228,6 +235,7 @@ const ScoreApp = () => {
   });
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
   const [storedPlayers, setStoredPlayers] = useState<Player[]>([]);
+  const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
   const [storedPlayersLoaded, setStoredPlayersLoaded] = useState(false);
   const [sessionLabelDraft, setSessionLabelDraft] = useState("");
   const [activePanel, setActivePanel] = useState<ActivePanel | null>(getInitialPanel);
@@ -270,16 +278,22 @@ const ScoreApp = () => {
   useEffect(() => {
     if (normalizedSession) {
       setStoredPlayers(normalizedSession.players);
+      setKnownPlayers((current) => mergeKnownPlayers(current, normalizedSession.players));
       setStoredPlayersLoaded(true);
+    }
+  }, [normalizedSession]);
+  useEffect(() => {
+    if (snapshotMode) {
       return;
     }
-    if (!snapshotMode) {
-      void fetchStoredPlayers()
-        .then(setStoredPlayers)
-        .catch(() => undefined)
-        .finally(() => setStoredPlayersLoaded(true));
-    }
-  }, [normalizedSession, snapshotMode]);
+    void fetchStoredPlayers()
+      .then(({ players, knownPlayers: fetchedKnownPlayers }) => {
+        setStoredPlayers((current) => (current.length > 0 ? current : players));
+        setKnownPlayers((current) => mergeKnownPlayers(current, fetchedKnownPlayers));
+      })
+      .catch(() => undefined)
+      .finally(() => setStoredPlayersLoaded(true));
+  }, [snapshotMode]);
   const defaultSeatIds = useMemo(() => {
     if (!normalizedSession) {
       return [];
@@ -402,32 +416,71 @@ const ScoreApp = () => {
     }
   };
 
-  const handleAddPlayer = (name: string) => {
+  const handleAddPlayer = (nameValue: string): boolean => {
     if (!normalizedSession || normalizedSession.players.length >= 6) {
-      return;
+      return false;
+    }
+    const name = nameValue.trim();
+    const knownPlayer = findPlayerByName(knownPlayers, name);
+    const player = knownPlayer ?? { id: createId(), name };
+    if (
+      normalizedSession.players.some(
+        (current) =>
+          current.id === player.id ||
+          normalizePlayerName(current.name) === normalizePlayerName(player.name),
+      )
+    ) {
+      return false;
     }
     const next = {
       ...normalizedSession,
-      players: [...normalizedSession.players, { id: createId(), name }],
+      players: [...normalizedSession.players, player],
     };
+    setKnownPlayers((current) => mergeKnownPlayers(current, [player]));
     saveSession(next);
+    return true;
   };
 
-  const handleRenamePlayer = (id: string, name: string) => {
+  const handleReplacePlayer = (id: string, nameValue: string): boolean => {
     if (!normalizedSession) {
-      return;
+      return false;
     }
     const playerIndex = normalizedSession.players.findIndex((player) => player.id === id);
     if (playerIndex >= 0 && playerIndex < appConfig.fixedPlayerCount) {
-      return;
+      return false;
+    }
+    if (!canRemovePlayer(normalizedSession, id)) {
+      return false;
+    }
+    const currentPlayer = normalizedSession.players[playerIndex];
+    if (!currentPlayer) {
+      return false;
+    }
+    const name = nameValue.trim();
+    if (normalizePlayerName(currentPlayer.name) === normalizePlayerName(name)) {
+      return true;
+    }
+    const knownPlayer = findPlayerByName(knownPlayers, name);
+    const replacement = knownPlayer ?? { id: createId(), name };
+    if (
+      normalizedSession.players.some(
+        (player) =>
+          player.id !== id &&
+          (player.id === replacement.id ||
+            normalizePlayerName(player.name) === normalizePlayerName(replacement.name)),
+      )
+    ) {
+      return false;
     }
     const next = {
       ...normalizedSession,
       players: normalizedSession.players.map((player) =>
-        player.id === id ? { ...player, name } : player,
+        player.id === id ? replacement : player,
       ),
     };
+    setKnownPlayers((current) => mergeKnownPlayers(current, [replacement]));
     saveSession(next);
+    return true;
   };
 
   const handleRemovePlayer = (id: string) => {
@@ -776,10 +829,11 @@ const ScoreApp = () => {
                         {normalizedSession ? (
                           <PlayerManager
                             players={normalizedSession.players}
+                            knownPlayers={knownPlayers}
                             hands={normalizedSession.hands}
                             fixedPlayerCount={appConfig.fixedPlayerCount}
                             onAdd={handleAddPlayer}
-                            onRename={handleRenamePlayer}
+                            onReplace={handleReplacePlayer}
                             onRemove={handleRemovePlayer}
                           />
                         ) : (
