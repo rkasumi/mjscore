@@ -139,10 +139,12 @@ CORS_ORIGIN=http://localhost:5173
 
 Display mode is enabled when the query parameter includes `display=1`, `display=true`, or `display=display`.
 Its reverse-condition board shows all four players and tries overall ranks in
-order to show each player's highest realistic target. A scenario is treated as
+two modes: overall-first conditions and one-rank-up conditions. The modes can
+be selected manually and alternate every 10 seconds. A scenario is treated as
 realistic when each required score gap is at most 30,000 points, the required
 own score is at most 60,000 points, and the score-gap requirement is consistent
-with the assumed finishing order.
+with the assumed finishing order. When no realistic target exists, the board
+still shows the least demanding reference condition after rank-point bonuses.
 
 Optional SPA build-time settings:
 

@@ -1,4 +1,5 @@
 import type { Hand, Session } from "../../shared/types";
+import { ORIGIN_SCORE } from "../../shared/rules";
 import { buildSessionAggregate } from "./aggregation";
 import {
   calculateTargetRankConditions,
@@ -9,6 +10,7 @@ const MIN_INTERVAL_MS = 20 * 60 * 1000;
 const MAX_INTERVAL_MS = 180 * 60 * 1000;
 export const DISPLAY_REALISTIC_MAX_GAP = 30000;
 export const DISPLAY_REALISTIC_MAX_SCORE = 60000;
+export type DisplayConditionMode = "first" | "rank-up";
 
 export type DisplayRequirement = {
   label: string;
@@ -26,12 +28,19 @@ export type DisplayReverseCard = {
   available: boolean;
   fallback: boolean;
   gapToNextRank: number | null;
+  statusMessage: string | null;
 };
 
 type DisplayScenarioSelection = {
   scenario: ConditionScenario;
   targetRank: number;
   fallback: boolean;
+};
+
+type DisplayTargetScenarios = {
+  targetRank: number;
+  rivalPlayerIds: string[];
+  scenarios: ConditionScenario[];
 };
 
 export type PaceEstimate = {
@@ -76,22 +85,103 @@ const premiseText = (scenario: ConditionScenario, playerMap: Map<string, string>
     .map((playerId, index) => `${playerMap.get(playerId) ?? "不明"}${index + 1}着`)
     .join("・");
 
-const isRealisticScenario = (scenario: ConditionScenario): boolean => {
+const isRankConsistentScenario = (scenario: ConditionScenario): boolean => {
   const playerRank = scenario.seatOrder.indexOf(scenario.playerId);
   if (playerRank < 0) return false;
+  return scenario.needGaps.every(
+    (gap) => scenario.seatOrder.indexOf(gap.targetId) > playerRank,
+  );
+};
+
+const isRealisticScenario = (scenario: ConditionScenario): boolean => {
+  if (!isRankConsistentScenario(scenario)) return false;
   if (
     scenario.needScoreMin !== null &&
     scenario.needScoreMin > DISPLAY_REALISTIC_MAX_SCORE
   ) {
     return false;
   }
-  return scenario.needGaps.every((gap) => {
-    const targetRank = scenario.seatOrder.indexOf(gap.targetId);
-    return (
-      targetRank > playerRank &&
-      gap.gap <= DISPLAY_REALISTIC_MAX_GAP
+  return scenario.needGaps.every(
+    (gap) => gap.gap <= DISPLAY_REALISTIC_MAX_GAP,
+  );
+};
+
+const compareDisplayScenarios = (
+  left: ConditionScenario,
+  right: ConditionScenario,
+  rivalPlayerIds: string[],
+): number => {
+  const scoreBurden = (scenario: ConditionScenario): [number, number] => {
+    const burdens = scenario.needGaps.map((gap) => gap.gap);
+    if (scenario.needScoreMin !== null) {
+      burdens.push(Math.max(0, scenario.needScoreMin - ORIGIN_SCORE));
+    }
+    return [
+      Math.max(0, ...burdens),
+      burdens.reduce((sum, burden) => sum + burden, 0),
+    ];
+  };
+  const rankBurden = (scenario: ConditionScenario): [number, number] => {
+    const playerRank = scenario.seatOrder.indexOf(scenario.playerId);
+    const targetIds = new Set([
+      ...rivalPlayerIds,
+      ...scenario.needGaps.map((gap) => gap.targetId),
+    ]);
+    const differences = [...targetIds]
+      .map((targetId) => scenario.seatOrder.indexOf(targetId))
+      .filter((targetRank) => targetRank >= 0)
+      .map((targetRank) => Math.abs(targetRank - playerRank));
+    return [
+      Math.max(0, ...differences),
+      differences.reduce((sum, difference) => sum + difference, 0),
+    ];
+  };
+
+  const [leftMaxScore, leftTotalScore] = scoreBurden(left);
+  const [rightMaxScore, rightTotalScore] = scoreBurden(right);
+  if (leftMaxScore !== rightMaxScore) return leftMaxScore - rightMaxScore;
+  if (leftTotalScore !== rightTotalScore) return leftTotalScore - rightTotalScore;
+
+  const [leftMaxRank, leftTotalRank] = rankBurden(left);
+  const [rightMaxRank, rightTotalRank] = rankBurden(right);
+  if (leftMaxRank !== rightMaxRank) return leftMaxRank - rightMaxRank;
+  if (leftTotalRank !== rightTotalRank) return leftTotalRank - rightTotalRank;
+  return rivalPlayerIds.length > 0
+    ? right.rank - left.rank
+    : left.rank - right.rank;
+};
+
+const sortedDisplayScenarios = (
+  playerId: string,
+  target: DisplayTargetScenarios,
+): ConditionScenario[] =>
+  target.scenarios
+    .filter(
+      (scenario) =>
+        scenario.playerId === playerId && isRankConsistentScenario(scenario),
+    )
+    .sort((left, right) =>
+      compareDisplayScenarios(left, right, target.rivalPlayerIds),
     );
-  });
+
+const selectReferenceScenario = ({
+  playerId,
+  targetScenarios,
+}: {
+  playerId: string;
+  targetScenarios: DisplayTargetScenarios[];
+}): DisplayScenarioSelection | null => {
+  for (const target of [...targetScenarios].reverse()) {
+    const scenario = sortedDisplayScenarios(playerId, target)[0];
+    if (scenario) {
+      return {
+        scenario,
+        targetRank: target.targetRank,
+        fallback: target.targetRank > 1,
+      };
+    }
+  }
+  return null;
 };
 
 export const selectDisplayScenario = ({
@@ -99,15 +189,11 @@ export const selectDisplayScenario = ({
   targetScenarios,
 }: {
   playerId: string;
-  targetScenarios: Array<{
-    targetRank: number;
-    scenarios: ConditionScenario[];
-  }>;
+  targetScenarios: DisplayTargetScenarios[];
 }): DisplayScenarioSelection | null => {
   for (const target of targetScenarios) {
-    const scenario = target.scenarios.find(
-      (candidate) =>
-        candidate.playerId === playerId && isRealisticScenario(candidate),
+    const scenario = sortedDisplayScenarios(playerId, target).find(
+      isRealisticScenario,
     );
     if (scenario) {
       return {
@@ -167,6 +253,7 @@ const buildPlacementRequirements = (
 export const buildDisplayReverseCards = (
   session: Session,
   seatPlayerIds: string[],
+  mode: DisplayConditionMode = "first",
 ): DisplayReverseCard[] => {
   if (seatPlayerIds.length !== 4) return [];
   const playerMap = new Map(session.players.map((player) => [player.id, player.name]));
@@ -174,33 +261,90 @@ export const buildDisplayReverseCards = (
   return aggregate.players
     .filter((player) => seatPlayerIds.includes(player.playerId))
     .map((player) => {
-      const highestTargetRank = player.rank === 1 ? 1 : player.rank - 1;
-      const targetScenarios = Array.from(
-        { length: highestTargetRank },
-        (_, index) => {
-          const targetRank = index + 1;
-          return {
-            targetRank,
-            scenarios: calculateTargetRankConditions(
-              session,
-              seatPlayerIds,
-              player.playerId,
-              targetRank,
-              { topN: 24 },
-            ),
-          };
-        },
-      );
-      const selection = selectDisplayScenario({
-        playerId: player.playerId,
-        targetScenarios,
-      });
       const nextRankPlayer =
         player.rank > 1 ? aggregate.players[player.rank - 2] ?? null : null;
       const gapToNextRank = nextRankPlayer
         ? Math.round((nextRankPlayer.totalPoint - player.totalPoint) * 10) / 10
         : null;
+      if (mode === "rank-up" && player.rank === 1) {
+        return {
+          playerId: player.playerId,
+          playerName: player.name,
+          currentRank: player.rank,
+          targetRank: null,
+          targetLabel: "着順アップ対象外",
+          ownPlacement: null,
+          requirements: [],
+          available: false,
+          fallback: false,
+          gapToNextRank,
+          statusMessage: "現在トップです",
+        };
+      }
+
+      const targetRanks = mode === "first" ? [1] : [player.rank - 1];
+      const targetScenarios = targetRanks.map((targetRank) => {
+        const playersAllowedAhead = new Set(
+          aggregate.players
+            .slice(0, targetRank - 1)
+            .map((candidate) => candidate.playerId),
+        );
+        return {
+          targetRank,
+          rivalPlayerIds: aggregate.players
+            .filter(
+              (candidate) =>
+                candidate.rank < player.rank &&
+                !playersAllowedAhead.has(candidate.playerId),
+            )
+            .map((candidate) => candidate.playerId),
+          scenarios: calculateTargetRankConditions(
+            session,
+            seatPlayerIds,
+            player.playerId,
+            targetRank,
+            { maxGap: Number.MAX_SAFE_INTEGER, topN: 24 },
+          ),
+        };
+      });
+      const selection = selectDisplayScenario({
+        playerId: player.playerId,
+        targetScenarios,
+      });
       if (!selection) {
+        const reference = selectReferenceScenario({
+          playerId: player.playerId,
+          targetScenarios,
+        });
+        if (reference) {
+          const referenceTarget = targetScenarios.find(
+            (target) => target.targetRank === reference.targetRank,
+          );
+          const relevantPlayerIds = new Set([
+            ...(referenceTarget?.rivalPlayerIds ?? []),
+            ...reference.scenario.needGaps.map((gap) => gap.targetId),
+          ]);
+          return {
+            playerId: player.playerId,
+            playerName: player.name,
+            currentRank: player.rank,
+            targetRank: reference.targetRank,
+            targetLabel:
+              reference.targetRank === 1
+                ? "首位条件（参考）"
+                : `総合${reference.targetRank}位条件（参考）`,
+            ownPlacement: `自分${reference.scenario.rank}着`,
+            requirements: buildPlacementRequirements(
+              reference.scenario,
+              playerMap,
+              relevantPlayerIds,
+            ),
+            available: false,
+            fallback: reference.fallback,
+            gapToNextRank,
+            statusMessage: null,
+          };
+        }
         return {
           playerId: player.playerId,
           playerName: player.name,
@@ -217,26 +361,20 @@ export const buildDisplayReverseCards = (
           available: false,
           fallback: false,
           gapToNextRank,
+          statusMessage: "次の半荘だけでの逆転は困難",
         };
       }
       const isKeepingFirst = player.rank === 1 && selection.targetRank === 1;
-      const playersAllowedAhead = new Set(
-        aggregate.players
-          .slice(0, selection.targetRank - 1)
-          .map((candidate) => candidate.playerId),
+      const rivalPlayerIds = new Set(
+        targetScenarios.find(
+          (target) => target.targetRank === selection.targetRank,
+        )?.rivalPlayerIds ?? [],
       );
       const gapTargetIds = new Set(
         selection.scenario.needGaps.map((gap) => gap.targetId),
       );
       const relevantPlayerIds = new Set(
-        aggregate.players
-          .filter(
-            (candidate) =>
-              !playersAllowedAhead.has(candidate.playerId) &&
-              (candidate.rank < player.rank ||
-                gapTargetIds.has(candidate.playerId)),
-          )
-          .map((candidate) => candidate.playerId),
+        [...rivalPlayerIds, ...gapTargetIds],
       );
       return {
         playerId: player.playerId,
@@ -255,6 +393,7 @@ export const buildDisplayReverseCards = (
         available: true,
         fallback: selection.fallback,
         gapToNextRank,
+        statusMessage: null,
       };
     });
 };

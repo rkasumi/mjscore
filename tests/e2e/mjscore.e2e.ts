@@ -82,7 +82,7 @@ test("starts a score session and opens the score table panel", async ({ page }) 
   await expect(page.getByRole("button", { name: "符計算" })).toBeVisible();
 });
 
-test("shows a concise realistic condition in display mode", async ({ page }) => {
+test("switches display mode between first and rank-up conditions", async ({ page }) => {
   const session = {
     id: "display-session",
     createdAt: "2026-07-19T00:00:00.000Z",
@@ -90,7 +90,16 @@ test("shows a concise realistic condition in display mode", async ({ page }) => 
       id,
       name: id.toUpperCase(),
     })),
-    hands: [],
+    hands: [0, 1].map((index) => ({
+      id: `display-hand-${index}`,
+      createdAt: `2026-07-19T0${index + 1}:00:00.000Z`,
+      seats: [
+        { playerId: "a", score: 60000 },
+        { playerId: "b", score: 20000 },
+        { playerId: "c", score: 15000 },
+        { playerId: "d", score: 5000 },
+      ],
+    })),
   };
   await page.unroute("**/api/session");
   await page.route("**/api/session", async (route) => {
@@ -106,11 +115,23 @@ test("shows a concise realistic condition in display mode", async ({ page }) => 
   await page.goto("/?display=1");
 
   await expect(page.getByRole("heading", { name: "逆転条件" })).toBeVisible();
+  const firstTab = page.getByRole("tab", { name: "1位条件" });
+  const rankUpTab = page.getByRole("tab", { name: "着順アップ条件" });
+  await expect(firstTab).toHaveAttribute("aria-selected", "true");
   for (const playerName of ["A", "B", "C", "D"]) {
     await expect(page.getByLabel(`${playerName}の逆転条件`)).toBeVisible();
   }
   await expect(page.getByText("総合1位キープ")).toBeVisible();
-  await expect(page.getByText(/トップラス/).first()).toBeVisible();
+  const secondPlaceCard = page.getByLabel("Bの逆転条件");
+  await expect(secondPlaceCard).toContainText("首位条件（参考）");
+  await expect(secondPlaceCard).toContainText("Aとトップラス");
+  await expect(secondPlaceCard).toContainText("80,000点差");
+
+  await rankUpTab.click();
+
+  await expect(rankUpTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Aの逆転条件")).toContainText("現在トップです");
+  await expect(page.getByLabel("Dの逆転条件")).toContainText("総合3位へ");
 });
 
 test("reuses a known player identity when replacing a roster slot", async ({ page }) => {

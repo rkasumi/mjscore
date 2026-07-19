@@ -54,7 +54,7 @@ describe("buildDisplayReverseCards", () => {
     ).toBe(true);
   });
 
-  it("falls back to the highest realistic target rank", () => {
+  it("separates overall-first and one-rank-up targets", () => {
     const session: Session = {
       id: "session",
       createdAt: "2026-07-13T00:00:00.000Z",
@@ -72,12 +72,39 @@ describe("buildDisplayReverseCards", () => {
         },
       ],
     };
-    const item = buildDisplayReverseCards(session, ["a", "b", "c", "d"]).find(
+    const firstItem = buildDisplayReverseCards(
+      session,
+      ["a", "b", "c", "d"],
+      "first",
+    ).find(
       (candidate) => candidate.playerName === "D",
     );
-    expect(item?.targetRank).toBe(2);
-    expect(item?.targetLabel).toBe("総合2位へ");
-    expect(item?.fallback).toBe(true);
+    const rankUpItem = buildDisplayReverseCards(
+      session,
+      ["a", "b", "c", "d"],
+      "rank-up",
+    ).find((candidate) => candidate.playerName === "D");
+    expect(firstItem?.targetRank).toBe(1);
+    expect(firstItem?.targetLabel).toBe("首位条件（参考）");
+    expect(rankUpItem?.targetRank).toBe(3);
+    expect(rankUpItem?.targetLabel).toBe("総合3位へ");
+    expect(rankUpItem?.available).toBe(true);
+  });
+
+  it("marks the current leader as outside the rank-up target", () => {
+    const session: Session = {
+      id: "session",
+      createdAt: "2026-07-13T00:00:00.000Z",
+      players: ["a", "b", "c", "d"].map((id) => ({ id, name: id.toUpperCase() })),
+      hands: [],
+    };
+    const leader = buildDisplayReverseCards(
+      session,
+      ["a", "b", "c", "d"],
+      "rank-up",
+    ).find((card) => card.currentRank === 1);
+    expect(leader?.targetLabel).toBe("着順アップ対象外");
+    expect(leader?.statusMessage).toBe("現在トップです");
   });
 
   it("keeps a card visible when no realistic higher target exists", () => {
@@ -100,7 +127,12 @@ describe("buildDisplayReverseCards", () => {
     const second = cards.find((card) => card.playerName === "B");
     expect(cards).toHaveLength(4);
     expect(second?.available).toBe(false);
-    expect(second?.targetLabel).toBe("現実的な首位条件なし");
+    expect(second?.targetLabel).toBe("首位条件（参考）");
+    expect(second?.ownPlacement).toBe("自分1着");
+    expect(second?.requirements).toContainEqual({
+      label: "Aとトップラス",
+      value: "80,000点差",
+    });
     expect(second?.gapToNextRank).toBe(160);
   });
 });
@@ -112,14 +144,14 @@ const scenario = ({
 }: {
   playerId?: string;
   seatOrder?: string[];
-  gap?: number;
+  gap?: number | null;
 } = {}): ConditionScenario => ({
   playerId,
   seatOrder,
   rank: seatOrder.indexOf(playerId) + 1,
-  needGaps: [{ targetId: "a", gap }],
+  needGaps: gap === null ? [] : [{ targetId: "a", gap }],
   needScoreMin: null,
-  difficulty: gap / 1000,
+  difficulty: (gap ?? 0) / 1000,
 });
 
 describe("selectDisplayScenario", () => {
@@ -127,8 +159,12 @@ describe("selectDisplayScenario", () => {
     const selected = selectDisplayScenario({
       playerId: "c",
       targetScenarios: [
-        { targetRank: 1, scenarios: [scenario()] },
-        { targetRank: 2, scenarios: [scenario({ gap: 5000 })] },
+        { targetRank: 1, rivalPlayerIds: ["a"], scenarios: [scenario()] },
+        {
+          targetRank: 2,
+          rivalPlayerIds: ["a"],
+          scenarios: [scenario({ gap: 5000 })],
+        },
       ],
     });
     expect(selected?.targetRank).toBe(1);
@@ -139,8 +175,16 @@ describe("selectDisplayScenario", () => {
     const selected = selectDisplayScenario({
       playerId: "c",
       targetScenarios: [
-        { targetRank: 1, scenarios: [scenario({ gap: 30100 })] },
-        { targetRank: 2, scenarios: [scenario({ gap: 10000 })] },
+        {
+          targetRank: 1,
+          rivalPlayerIds: ["a"],
+          scenarios: [scenario({ gap: 30100 })],
+        },
+        {
+          targetRank: 2,
+          rivalPlayerIds: ["a"],
+          scenarios: [scenario({ gap: 10000 })],
+        },
       ],
     });
     expect(selected?.targetRank).toBe(2);
@@ -153,6 +197,7 @@ describe("selectDisplayScenario", () => {
       targetScenarios: [
         {
           targetRank: 1,
+          rivalPlayerIds: ["a"],
           scenarios: [
             scenario({
               seatOrder: ["a", "c", "b", "d"],
@@ -163,5 +208,29 @@ describe("selectDisplayScenario", () => {
       ],
     });
     expect(selected).toBeNull();
+  });
+
+  it("prefers a one-rank gap over top-last when both need no score gap", () => {
+    const selected = selectDisplayScenario({
+      playerId: "c",
+      targetScenarios: [
+        {
+          targetRank: 3,
+          rivalPlayerIds: ["a"],
+          scenarios: [
+            scenario({
+              seatOrder: ["c", "b", "d", "a"],
+              gap: null,
+            }),
+            scenario({
+              seatOrder: ["b", "d", "c", "a"],
+              gap: null,
+            }),
+          ],
+        },
+      ],
+    });
+    expect(selected?.scenario.rank).toBe(3);
+    expect(selected?.scenario.seatOrder.indexOf("a")).toBe(3);
   });
 });
