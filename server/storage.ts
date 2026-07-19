@@ -52,6 +52,13 @@ export class PlayerIdentityConflictError extends Error {
   }
 }
 
+export class EmptySessionFinalizationError extends Error {
+  constructor() {
+    super("半荘が0回の卓は確定できません。");
+    this.name = "EmptySessionFinalizationError";
+  }
+}
+
 export class LegacyDataMigrationRequiredError extends Error {
   constructor(readonly legacyPath: string) {
     super(`Legacy data exists at ${legacyPath}; run the JSON migration before starting the API`);
@@ -121,6 +128,7 @@ export class SessionRepository {
       const now = new Date().toISOString();
       const nextVersion = current.version + 1;
       if (current.session && current.session.id !== session.id) {
+        this.assertSessionCanBeFinalized(current.session);
         this.db
           .prepare(
             "UPDATE sessions SET status = 'finalized', finalized_at = ?, updated_at = ? WHERE id = ?",
@@ -293,6 +301,7 @@ export class SessionRepository {
       }
       const now = new Date().toISOString();
       if (current.session && current.session.id !== id) {
+        this.assertSessionCanBeFinalized(current.session);
         this.db
           .prepare(
             "UPDATE sessions SET status = 'finalized', finalized_at = ?, updated_at = ? WHERE id = ?",
@@ -330,6 +339,7 @@ export class SessionRepository {
       if (!current.session || current.session.id !== id) {
         throw new Error("Active session not found");
       }
+      this.assertSessionCanBeFinalized(current.session);
       const now = new Date().toISOString();
       const nextVersion = current.version + 1;
       this.db
@@ -587,6 +597,12 @@ export class SessionRepository {
         throw new PlayerIdentityConflictError(player.name);
       }
       sessionOwnerByName.set(normalizedName, player.id);
+    }
+  }
+
+  private assertSessionCanBeFinalized(session: Session): void {
+    if (session.hands.length === 0) {
+      throw new EmptySessionFinalizationError();
     }
   }
 

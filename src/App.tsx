@@ -843,6 +843,7 @@ const ScoreApp = () => {
                         )}
                         <SessionControls
                           hasSession={Boolean(normalizedSession)}
+                          canFinalize={Boolean(normalizedSession?.hands.length)}
                           createDisabled={!appConfigLoaded || !storedPlayersLoaded}
                           onCreate={handleCreateSession}
                           onFinalize={() => void handleFinalizeSession()}

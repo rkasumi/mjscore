@@ -70,6 +70,11 @@ test("starts a score session and opens the score table panel", async ({ page }) 
   await expect(
     page.getByRole("combobox", { name: "プレイヤー1の参加者" }),
   ).toHaveValue("プレイヤー1");
+  await expect(page.getByRole("button", { name: "現在の卓を確定", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "現在の卓を確定して新規卓" }),
+  ).toBeDisabled();
+  await expect(page.getByText("卓の確定には半荘が1回以上必要です。")).toBeVisible();
   await page.getByRole("button", { name: "閉じる" }).click();
 
   await page.getByRole("button", { name: "点数表" }).click();

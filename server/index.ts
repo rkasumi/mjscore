@@ -4,6 +4,7 @@ import cors from "cors";
 import { isDateOnly } from "../shared/sessionValidation.js";
 import { buildAnalytics } from "./analytics.js";
 import {
+  EmptySessionFinalizationError,
   getDefaultRepository,
   PlayerIdentityConflictError,
   readEnvelope,
@@ -131,7 +132,10 @@ app.post("/session", async (req, res) => {
       res.status(400).json({ error: error.message });
       return;
     }
-    if (error instanceof PlayerIdentityConflictError) {
+    if (
+      error instanceof PlayerIdentityConflictError ||
+      error instanceof EmptySessionFinalizationError
+    ) {
       res.status(400).json({ error: error.message });
       return;
     }
@@ -142,6 +146,10 @@ app.post("/session", async (req, res) => {
 const handleSessionMutationError = (error: unknown, res: express.Response): void => {
   if (error instanceof SessionConflictError) {
     res.status(409).json({ error: error.message, current: error.current });
+    return;
+  }
+  if (error instanceof EmptySessionFinalizationError) {
+    res.status(400).json({ error: error.message });
     return;
   }
   if (error instanceof Error && error.message.toLowerCase().endsWith("session not found")) {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { Session } from "../shared/types.js";
 import {
+  EmptySessionFinalizationError,
   LegacyDataMigrationRequiredError,
   PlayerIdentityConflictError,
   SessionConflictError,
@@ -114,6 +115,49 @@ describe("SessionRepository", () => {
       expect(envelope).toMatchObject({ version: 2, session: null });
       expect(repository.readSessionDetail("final")?.summary.status).toBe("finalized");
       expect(repository.listKnownPlayers()).toEqual(createSession("final").players);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("does not finalize an active session with no hands", () => {
+    const repository = createRepository();
+    try {
+      const emptySession = { ...createSession("empty"), hands: [] };
+      repository.saveActiveSession(emptySession, 0);
+
+      expect(() => repository.finalizeActiveSession("empty", 1)).toThrow(
+        EmptySessionFinalizationError,
+      );
+      expect(() => repository.saveActiveSession(createSession("replacement"), 1)).toThrow(
+        EmptySessionFinalizationError,
+      );
+      expect(repository.readEnvelope()).toMatchObject({
+        version: 1,
+        session: emptySession,
+      });
+      expect(repository.listSessions()).toHaveLength(1);
+    } finally {
+      repository.close();
+    }
+  });
+
+  it("does not finalize an empty active session when reopening history", () => {
+    const repository = createRepository();
+    try {
+      repository.saveActiveSession(createSession("history"), 0);
+      repository.saveActiveSession(createSession("current"), 1);
+      const emptyCurrent = { ...createSession("current"), hands: [] };
+      repository.saveActiveSession(emptyCurrent, 2);
+
+      expect(() => repository.reopenSession("history", 3)).toThrow(
+        EmptySessionFinalizationError,
+      );
+      expect(repository.readEnvelope()).toMatchObject({
+        version: 3,
+        session: emptyCurrent,
+      });
+      expect(repository.readSessionDetail("history")?.summary.status).toBe("finalized");
     } finally {
       repository.close();
     }
