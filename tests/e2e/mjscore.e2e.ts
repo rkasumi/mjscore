@@ -77,6 +77,37 @@ test("starts a score session and opens the score table panel", async ({ page }) 
   await expect(page.getByRole("button", { name: "符計算" })).toBeVisible();
 });
 
+test("shows a concise realistic condition in display mode", async ({ page }) => {
+  const session = {
+    id: "display-session",
+    createdAt: "2026-07-19T00:00:00.000Z",
+    players: ["a", "b", "c", "d"].map((id) => ({
+      id,
+      name: id.toUpperCase(),
+    })),
+    hands: [],
+  };
+  await page.unroute("**/api/session");
+  await page.route("**/api/session", async (route) => {
+    await route.fulfill({
+      json: {
+        version: 1,
+        updatedAt: "2026-07-19T00:00:01.000Z",
+        session,
+      },
+    });
+  });
+
+  await page.goto("/?display=1");
+
+  await expect(page.getByRole("heading", { name: "逆転条件" })).toBeVisible();
+  for (const playerName of ["A", "B", "C", "D"]) {
+    await expect(page.getByLabel(`${playerName}の逆転条件`)).toBeVisible();
+  }
+  await expect(page.getByText("総合1位キープ")).toBeVisible();
+  await expect(page.getByText(/トップラス/).first()).toBeVisible();
+});
+
 test("reuses a known player identity when replacing a roster slot", async ({ page }) => {
   const recentPlayers = [
     { id: "yagi", name: "やぎ" },

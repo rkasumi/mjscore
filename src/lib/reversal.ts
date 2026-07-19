@@ -37,6 +37,96 @@ export type ReverseConditionOptions = {
   topGapCount?: number;
 };
 
+const scenarioDifficulty = ({
+  rank,
+  needGaps,
+  needScoreMin,
+  topGapCount,
+}: {
+  rank: number;
+  needGaps: ConditionNeedGap[];
+  needScoreMin: number | null;
+  topGapCount: number;
+}): number => {
+  const gapCost =
+    needGaps.slice(0, topGapCount).reduce((sum, item) => sum + item.gap, 0) /
+    1000;
+  const ownScoreCost = needScoreMin
+    ? Math.max(0, needScoreMin - ORIGIN_SCORE) / 1000
+    : 0;
+  return (RANK_COSTS[rank] ?? 0) + ownScoreCost + gapCost;
+};
+
+export const calculateTargetRankConditions = (
+  session: Session,
+  seatPlayerIds: string[],
+  playerId: string,
+  targetRank: number,
+  options: ReverseConditionOptions = {},
+): ConditionScenario[] => {
+  if (
+    seatPlayerIds.length !== 4 ||
+    !seatPlayerIds.includes(playerId) ||
+    targetRank < 1 ||
+    targetRank >= session.players.length
+  ) {
+    return [];
+  }
+
+  const topN = options.topN ?? DEFAULT_TOP_N;
+  const maxGap = options.maxGap ?? DEFAULT_MAX_GAP;
+  const topGapCount = options.topGapCount ?? DEFAULT_TOP_GAP_COUNT;
+  const totals = buildTotalPoints(session);
+  const seatSet = new Set(seatPlayerIds);
+  const currentOrder = [...session.players].sort(
+    (a, b) => (totals.get(b.id) ?? 0) - (totals.get(a.id) ?? 0),
+  );
+  const playersAllowedAhead = new Set(
+    currentOrder.slice(0, targetRank - 1).map((player) => player.id),
+  );
+  const targets = session.players
+    .map((player) => player.id)
+    .filter((targetId) => !playersAllowedAhead.has(targetId));
+  const scenarios: ConditionScenario[] = [];
+
+  permute(seatPlayerIds).forEach((order) => {
+    const rank = order.indexOf(playerId) + 1;
+    const bonusByPlayer = new Map(
+      order.map((orderedPlayerId, index) => [
+        orderedPlayerId,
+        RANK_POINTS[index] ?? 0,
+      ]),
+    );
+    const requirements = buildConditionRequirements({
+      playerId,
+      targets,
+      totals,
+      seatSet,
+      bonusByPlayer,
+      maxGap,
+    });
+    if (requirements.impossible) return;
+    const needGaps = [...requirements.needGaps].sort((a, b) => b.gap - a.gap);
+    scenarios.push({
+      playerId,
+      seatOrder: order,
+      rank,
+      needGaps,
+      needScoreMin: requirements.needScoreMin,
+      difficulty: scenarioDifficulty({
+        rank,
+        needGaps,
+        needScoreMin: requirements.needScoreMin,
+        topGapCount,
+      }),
+    });
+  });
+
+  return scenarios
+    .sort((a, b) => a.difficulty - b.difficulty)
+    .slice(0, topN);
+};
+
 export const calculateReverseConditions = (
   session: Session,
   seatPlayerIds: string[],
@@ -76,7 +166,6 @@ export const calculateReverseConditions = (
 
     seatPlayerIds.forEach((playerId) => {
       const rank = rankByPlayer.get(playerId) ?? 0;
-      const rankCost = RANK_COSTS[rank] ?? 0;
 
       const toFirst = buildConditionRequirements({
         playerId,
@@ -89,13 +178,12 @@ export const calculateReverseConditions = (
 
       if (!toFirst.impossible) {
         const sortedGaps = [...toFirst.needGaps].sort((a, b) => b.gap - a.gap);
-        const gapCost =
-          sortedGaps.slice(0, topGapCount).reduce((sum, item) => sum + item.gap, 0) /
-          1000;
-        const ownScoreCost = toFirst.needScoreMin
-          ? Math.max(0, toFirst.needScoreMin - ORIGIN_SCORE) / 1000
-          : 0;
-        const difficulty = rankCost + ownScoreCost + gapCost;
+        const difficulty = scenarioDifficulty({
+          rank,
+          needGaps: sortedGaps,
+          needScoreMin: toFirst.needScoreMin,
+          topGapCount,
+        });
 
         overallToFirstMap.get(playerId)?.push({
           playerId,
@@ -123,12 +211,12 @@ export const calculateReverseConditions = (
 
       if (!oneUp.impossible) {
         const sortedGaps = [...oneUp.needGaps].sort((a, b) => b.gap - a.gap);
-        const gapCost =
-          sortedGaps.slice(0, topGapCount).reduce((sum, item) => sum + item.gap, 0) / 1000;
-        const ownScoreCost = oneUp.needScoreMin
-          ? Math.max(0, oneUp.needScoreMin - ORIGIN_SCORE) / 1000
-          : 0;
-        const difficulty = rankCost + ownScoreCost + gapCost;
+        const difficulty = scenarioDifficulty({
+          rank,
+          needGaps: sortedGaps,
+          needScoreMin: oneUp.needScoreMin,
+          topGapCount,
+        });
 
         overallOneUpMap.get(playerId)?.push({
           playerId,
