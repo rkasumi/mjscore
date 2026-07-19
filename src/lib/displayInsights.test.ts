@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Hand, Session } from "../../shared/types";
 import type { ConditionScenario } from "./reversal";
 import {
+  buildDisplayRequirements,
   buildDisplayReverseCards,
   calculatePaceEstimate,
   selectDisplayScenario,
@@ -41,7 +42,6 @@ describe("buildDisplayReverseCards", () => {
     const cards = buildDisplayReverseCards(session, ["a", "b", "c", "d"]);
     expect(cards).toHaveLength(4);
     expect(cards.every((card) => card.targetLabel.length > 0)).toBe(true);
-    expect(cards.every((card) => card.ownPlacement?.startsWith("自分"))).toBe(true);
     expect(
       cards.some((card) =>
         card.requirements.some((requirement) => requirement.label.includes("トップラス")),
@@ -49,7 +49,7 @@ describe("buildDisplayReverseCards", () => {
     ).toBe(true);
     expect(
       cards.some((card) =>
-        card.requirements.some((requirement) => requirement.label.includes("着順差以上")),
+        card.requirements.some((requirement) => requirement.label.includes("より上")),
       ),
     ).toBe(true);
   });
@@ -128,7 +128,6 @@ describe("buildDisplayReverseCards", () => {
     expect(cards).toHaveLength(4);
     expect(second?.available).toBe(false);
     expect(second?.targetLabel).toBe("首位条件（参考）");
-    expect(second?.ownPlacement).toBe("自分1着");
     expect(second?.requirements).toContainEqual({
       label: "Aとトップラス",
       value: "80,000点差",
@@ -232,5 +231,127 @@ describe("selectDisplayScenario", () => {
     });
     expect(selected?.scenario.rank).toBe(3);
     expect(selected?.scenario.seatOrder.indexOf("a")).toBe(3);
+  });
+
+  it("prefers an easier placement when its score gap is still realistic", () => {
+    const selected = selectDisplayScenario({
+      playerId: "c",
+      targetScenarios: [
+        {
+          targetRank: 3,
+          rivalPlayerIds: ["a"],
+          scenarios: [
+            scenario({
+              seatOrder: ["c", "b", "d", "a"],
+              gap: 0,
+            }),
+            scenario({
+              seatOrder: ["b", "d", "c", "a"],
+              gap: 20000,
+            }),
+          ],
+        },
+      ],
+    });
+    expect(selected?.scenario.rank).toBe(3);
+    expect(selected?.scenario.seatOrder.indexOf("a")).toBe(3);
+  });
+
+  it("uses the worst adjacent score gap when placement is not fixed", () => {
+    const selected = selectDisplayScenario({
+      playerId: "c",
+      targetScenarios: [
+        {
+          targetRank: 3,
+          rivalPlayerIds: ["a"],
+          scenarios: [
+            scenario({
+              seatOrder: ["c", "a", "b", "d"],
+              gap: 10000,
+            }),
+            scenario({
+              seatOrder: ["b", "c", "a", "d"],
+              gap: 30000,
+            }),
+            scenario({
+              seatOrder: ["b", "d", "c", "a"],
+              gap: 30000,
+            }),
+          ],
+        },
+      ],
+    });
+    expect(selected?.scenario.needGaps).toEqual([
+      { targetId: "a", gap: 30000 },
+    ]);
+  });
+
+  it("uses a realistic top-third condition when any adjacent placement is too costly", () => {
+    const selected = selectDisplayScenario({
+      playerId: "c",
+      targetScenarios: [
+        {
+          targetRank: 3,
+          rivalPlayerIds: ["a"],
+          scenarios: [
+            scenario({
+              seatOrder: ["c", "a", "b", "d"],
+              gap: 20000,
+            }),
+            scenario({
+              seatOrder: ["b", "c", "a", "d"],
+              gap: 40000,
+            }),
+            scenario({
+              seatOrder: ["c", "b", "a", "d"],
+              gap: 10000,
+            }),
+          ],
+        },
+      ],
+    });
+    expect(selected?.scenario.seatOrder).toEqual(["c", "b", "a", "d"]);
+    expect(selected?.scenario.needGaps).toEqual([
+      { targetId: "a", gap: 10000 },
+    ]);
+  });
+});
+
+describe("buildDisplayRequirements", () => {
+  const playerMap = new Map([
+    ["a", "A"],
+    ["b", "B"],
+    ["c", "C"],
+    ["d", "D"],
+  ]);
+
+  it("describes a one-place relation without fixing either placement", () => {
+    expect(
+      buildDisplayRequirements(
+        scenario({ seatOrder: ["b", "c", "a", "d"], gap: 12000 }),
+        playerMap,
+        new Set(["a"]),
+      ),
+    ).toEqual([{ label: "Aより上", value: "12,000点差" }]);
+  });
+
+  it("describes first and third as a top-third condition", () => {
+    expect(
+      buildDisplayRequirements(
+        scenario({ seatOrder: ["c", "b", "a", "d"], gap: 20000 }),
+        playerMap,
+        new Set(["a"]),
+      ),
+    ).toEqual([{ label: "Aとトップ3着", value: "20,000点差" }]);
+  });
+
+  it("describes first and fourth as a top-last condition", () => {
+    expect(
+      buildDisplayRequirements(
+        scenario({ seatOrder: ["c", "b", "d", "a"], gap: 30000 }),
+        playerMap,
+        new Set(["a"]),
+      ),
+    ).toEqual([{ label: "Aとトップラス", value: "30,000点差" }]);
   });
 });

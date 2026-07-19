@@ -23,7 +23,6 @@ export type DisplayReverseCard = {
   currentRank: number;
   targetRank: number | null;
   targetLabel: string;
-  ownPlacement: string | null;
   requirements: DisplayRequirement[];
   available: boolean;
   fallback: boolean;
@@ -106,10 +105,65 @@ const isRealisticScenario = (scenario: ConditionScenario): boolean => {
   );
 };
 
+const normalizeAdjacentRequirement = (
+  scenario: ConditionScenario,
+  target: DisplayTargetScenarios,
+): ConditionScenario => {
+  const playerRank = scenario.seatOrder.indexOf(scenario.playerId);
+  const relevantPlayerIds = new Set([
+    ...target.rivalPlayerIds,
+    ...scenario.needGaps.map((gap) => gap.targetId),
+  ]);
+  const adjacentPlayerIds = [...relevantPlayerIds].filter(
+    (targetId) =>
+      scenario.seatOrder.indexOf(targetId) - playerRank === 1,
+  );
+  if (adjacentPlayerIds.length === 0) return scenario;
+
+  const alternatives = target.scenarios.filter((candidate) => {
+    const candidatePlayerRank = candidate.seatOrder.indexOf(candidate.playerId);
+    return (
+      candidate.playerId === scenario.playerId &&
+      isRankConsistentScenario(candidate) &&
+      adjacentPlayerIds.every(
+        (targetId) =>
+          candidate.seatOrder.indexOf(targetId) - candidatePlayerRank === 1,
+      )
+    );
+  });
+  const gapMap = new Map(
+    scenario.needGaps.map((gap) => [gap.targetId, gap.gap]),
+  );
+  adjacentPlayerIds.forEach((targetId) => {
+    const maximumGap = Math.max(
+      0,
+      ...alternatives.map(
+        (candidate) =>
+          candidate.needGaps.find((gap) => gap.targetId === targetId)?.gap ?? 0,
+      ),
+    );
+    if (maximumGap > 0) {
+      gapMap.set(targetId, maximumGap);
+    } else {
+      gapMap.delete(targetId);
+    }
+  });
+  const maximumScoreMin = Math.max(
+    0,
+    ...alternatives.map((candidate) => candidate.needScoreMin ?? 0),
+  );
+  return {
+    ...scenario,
+    needGaps: [...gapMap].map(([targetId, gap]) => ({ targetId, gap })),
+    needScoreMin: maximumScoreMin > 0 ? maximumScoreMin : null,
+  };
+};
+
 const compareDisplayScenarios = (
   left: ConditionScenario,
   right: ConditionScenario,
   rivalPlayerIds: string[],
+  prioritizePlacement: boolean,
 ): number => {
   const scoreBurden = (scenario: ConditionScenario): [number, number] => {
     const burdens = scenario.needGaps.map((gap) => gap.gap);
@@ -139,13 +193,23 @@ const compareDisplayScenarios = (
 
   const [leftMaxScore, leftTotalScore] = scoreBurden(left);
   const [rightMaxScore, rightTotalScore] = scoreBurden(right);
-  if (leftMaxScore !== rightMaxScore) return leftMaxScore - rightMaxScore;
-  if (leftTotalScore !== rightTotalScore) return leftTotalScore - rightTotalScore;
-
   const [leftMaxRank, leftTotalRank] = rankBurden(left);
   const [rightMaxRank, rightTotalRank] = rankBurden(right);
-  if (leftMaxRank !== rightMaxRank) return leftMaxRank - rightMaxRank;
-  if (leftTotalRank !== rightTotalRank) return leftTotalRank - rightTotalRank;
+  const scoreComparison =
+    leftMaxScore !== rightMaxScore
+      ? leftMaxScore - rightMaxScore
+      : leftTotalScore - rightTotalScore;
+  const rankComparison =
+    leftMaxRank !== rightMaxRank
+      ? leftMaxRank - rightMaxRank
+      : leftTotalRank - rightTotalRank;
+  if (prioritizePlacement) {
+    if (rankComparison !== 0) return rankComparison;
+    if (scoreComparison !== 0) return scoreComparison;
+  } else {
+    if (scoreComparison !== 0) return scoreComparison;
+    if (rankComparison !== 0) return rankComparison;
+  }
   return rivalPlayerIds.length > 0
     ? right.rank - left.rank
     : left.rank - right.rank;
@@ -154,14 +218,21 @@ const compareDisplayScenarios = (
 const sortedDisplayScenarios = (
   playerId: string,
   target: DisplayTargetScenarios,
+  prioritizePlacement: boolean,
 ): ConditionScenario[] =>
   target.scenarios
     .filter(
       (scenario) =>
         scenario.playerId === playerId && isRankConsistentScenario(scenario),
     )
+    .map((scenario) => normalizeAdjacentRequirement(scenario, target))
     .sort((left, right) =>
-      compareDisplayScenarios(left, right, target.rivalPlayerIds),
+      compareDisplayScenarios(
+        left,
+        right,
+        target.rivalPlayerIds,
+        prioritizePlacement,
+      ),
     );
 
 const selectReferenceScenario = ({
@@ -172,7 +243,7 @@ const selectReferenceScenario = ({
   targetScenarios: DisplayTargetScenarios[];
 }): DisplayScenarioSelection | null => {
   for (const target of [...targetScenarios].reverse()) {
-    const scenario = sortedDisplayScenarios(playerId, target)[0];
+    const scenario = sortedDisplayScenarios(playerId, target, false)[0];
     if (scenario) {
       return {
         scenario,
@@ -192,7 +263,7 @@ export const selectDisplayScenario = ({
   targetScenarios: DisplayTargetScenarios[];
 }): DisplayScenarioSelection | null => {
   for (const target of targetScenarios) {
-    const scenario = sortedDisplayScenarios(playerId, target).find(
+    const scenario = sortedDisplayScenarios(playerId, target, true).find(
       isRealisticScenario,
     );
     if (scenario) {
@@ -206,7 +277,7 @@ export const selectDisplayScenario = ({
   return null;
 };
 
-const buildPlacementRequirements = (
+export const buildDisplayRequirements = (
   scenario: ConditionScenario,
   playerMap: Map<string, string>,
   relevantPlayerIds: Set<string>,
@@ -227,6 +298,18 @@ const buildPlacementRequirements = (
       if (playerRankIndex === 0 && actualTargetRankIndex === 3) {
         return {
           label: `${targetName}とトップラス`,
+          value: gap === undefined ? null : `${gap.toLocaleString()}点差`,
+        };
+      }
+      if (playerRankIndex === 0 && actualTargetRankIndex === 2) {
+        return {
+          label: `${targetName}とトップ3着`,
+          value: gap === undefined ? null : `${gap.toLocaleString()}点差`,
+        };
+      }
+      if (rankDifference === 1) {
+        return {
+          label: `${targetName}より上`,
           value: gap === undefined ? null : `${gap.toLocaleString()}点差`,
         };
       }
@@ -273,7 +356,6 @@ export const buildDisplayReverseCards = (
           currentRank: player.rank,
           targetRank: null,
           targetLabel: "着順アップ対象外",
-          ownPlacement: null,
           requirements: [],
           available: false,
           fallback: false,
@@ -333,8 +415,7 @@ export const buildDisplayReverseCards = (
               reference.targetRank === 1
                 ? "首位条件（参考）"
                 : `総合${reference.targetRank}位条件（参考）`,
-            ownPlacement: `自分${reference.scenario.rank}着`,
-            requirements: buildPlacementRequirements(
+            requirements: buildDisplayRequirements(
               reference.scenario,
               playerMap,
               relevantPlayerIds,
@@ -356,7 +437,6 @@ export const buildDisplayReverseCards = (
               : player.rank === 2
                 ? "現実的な首位条件なし"
                 : "現実的な上位条件なし",
-          ownPlacement: null,
           requirements: [],
           available: false,
           fallback: false,
@@ -384,8 +464,7 @@ export const buildDisplayReverseCards = (
         targetLabel: isKeepingFirst
           ? "総合1位キープ"
           : `総合${selection.targetRank}位へ`,
-        ownPlacement: `自分${selection.scenario.rank}着`,
-        requirements: buildPlacementRequirements(
+        requirements: buildDisplayRequirements(
           selection.scenario,
           playerMap,
           relevantPlayerIds,

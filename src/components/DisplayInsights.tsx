@@ -113,7 +113,7 @@ export const DisplayInsights = ({ session, seatPlayerIds }: Props) => {
 const ReverseConditionCard = ({ card }: { card: DisplayReverseCard }) => (
   <article
     aria-label={`${card.playerName}の逆転条件`}
-    className={`grid min-h-0 grid-cols-[minmax(8rem,0.8fr)_auto_minmax(0,1.8fr)] items-center gap-3 overflow-hidden rounded-2xl border p-3 ${
+    className={`grid min-h-0 grid-cols-[minmax(8rem,0.8fr)_minmax(0,2.4fr)] items-center gap-3 overflow-hidden rounded-2xl border p-3 ${
       card.available
         ? card.targetRank === 1
           ? "border-amber-200 bg-amber-50"
@@ -138,41 +138,33 @@ const ReverseConditionCard = ({ card }: { card: DisplayReverseCard }) => (
         {card.targetLabel}
       </span>
     </div>
-    {card.ownPlacement ? (
-      <>
-        <div className="text-center">
-          <span className="block text-[10px] font-semibold text-slate-500">次局</span>
-          <strong className="whitespace-nowrap text-[clamp(1.25rem,2vw,1.9rem)] leading-tight text-slate-950">
-            {card.ownPlacement}
-          </strong>
-        </div>
-        <div className="flex min-w-0 flex-wrap content-center gap-1.5">
-          {card.requirements.map((requirement) => (
-            <div
-              key={`${requirement.label}-${requirement.value ?? ""}`}
-              className="flex min-w-0 items-baseline gap-2 rounded-lg bg-white/80 px-2.5 py-1.5"
-            >
-              <span className="text-[clamp(0.8rem,1.1vw,1rem)] font-semibold text-slate-700">
-                {requirement.label}
-              </span>
-              {requirement.value ? (
-                <strong className="whitespace-nowrap text-[clamp(0.95rem,1.45vw,1.3rem)] text-slate-950">
-                  {requirement.value}
-                </strong>
-              ) : null}
-            </div>
-          ))}
-          {card.requirements.length === 0 ? (
-            <div className="rounded-lg bg-white/80 px-3 py-1.5 text-sm text-slate-600">
-              点差条件なし
-            </div>
-          ) : null}
-        </div>
-      </>
+    {card.statusMessage === null ? (
+      <div className="flex min-w-0 flex-wrap content-center gap-1.5">
+        {card.requirements.map((requirement) => (
+          <div
+            key={`${requirement.label}-${requirement.value ?? ""}`}
+            className="flex min-w-0 items-baseline gap-2 rounded-lg bg-white/80 px-2.5 py-1.5"
+          >
+            <span className="text-[clamp(0.8rem,1.1vw,1rem)] font-semibold text-slate-700">
+              {requirement.label}
+            </span>
+            {requirement.value ? (
+              <strong className="whitespace-nowrap text-[clamp(0.95rem,1.45vw,1.3rem)] text-slate-950">
+                {requirement.value}
+              </strong>
+            ) : null}
+          </div>
+        ))}
+        {card.requirements.length === 0 ? (
+          <div className="rounded-lg bg-white/80 px-3 py-1.5 text-sm text-slate-600">
+            点差・着順条件なし
+          </div>
+        ) : null}
+      </div>
     ) : (
-      <div className="col-span-2 grid place-content-center gap-1 text-center">
+      <div className="grid place-content-center gap-1 text-center">
         <strong className="text-[clamp(1rem,1.6vw,1.4rem)] text-slate-600">
-          {card.statusMessage ?? "条件を計算できません"}
+          {card.statusMessage}
         </strong>
         {card.gapToNextRank !== null ? (
           <span className="text-sm text-slate-500">

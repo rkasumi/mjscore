@@ -126,12 +126,18 @@ test("switches display mode between first and rank-up conditions", async ({ page
   await expect(secondPlaceCard).toContainText("首位条件（参考）");
   await expect(secondPlaceCard).toContainText("Aとトップラス");
   await expect(secondPlaceCard).toContainText("80,000点差");
+  await expect(page.getByText(/自分[1-4]着/)).toHaveCount(0);
 
   await rankUpTab.click();
 
   await expect(rankUpTab).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Aの逆転条件")).toContainText("現在トップです");
-  await expect(page.getByLabel("Dの逆転条件")).toContainText("総合3位へ");
+  await expect(page.getByLabel("Cの逆転条件")).toContainText(
+    "Bより上30,000点差",
+  );
+  const fourthPlaceCard = page.getByLabel("Dの逆転条件");
+  await expect(fourthPlaceCard).toContainText("総合3位へ");
+  await expect(fourthPlaceCard).toContainText("Cとトップ3着");
 });
 
 test("reuses a known player identity when replacing a roster slot", async ({ page }) => {

@@ -143,8 +143,10 @@ two modes: overall-first conditions and one-rank-up conditions. The modes can
 be selected manually and alternate every 10 seconds. A scenario is treated as
 realistic when each required score gap is at most 30,000 points, the required
 own score is at most 60,000 points, and the score-gap requirement is consistent
-with the assumed finishing order. When no realistic target exists, the board
-still shows the least demanding reference condition after rank-point bonuses.
+with the assumed finishing order. Among realistic scenarios, the board prefers
+the smallest required finishing-order difference, such as finishing above a
+rival or a top-third condition. When no realistic target exists, the board still
+shows the least demanding reference condition after rank-point bonuses.
 
 Optional SPA build-time settings:
 
