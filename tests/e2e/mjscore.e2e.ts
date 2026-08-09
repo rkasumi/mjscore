@@ -82,6 +82,28 @@ test("starts a score session and opens the score table panel", async ({ page }) 
   await expect(page.getByRole("button", { name: "符計算" })).toBeVisible();
 });
 
+test("shows the API reason when a session save is rejected", async ({ page }) => {
+  await page.unroute("**/api/session");
+  await page.route("**/api/session", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 400,
+        json: { error: "Player name already belongs to another identity: ちあ" },
+      });
+      return;
+    }
+    await route.fulfill({ json: emptyEnvelope });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "卓管理" }).click();
+  await page.getByRole("button", { name: "卓を開始" }).click();
+
+  await expect(
+    page.getByText("Player name already belongs to another identity: ちあ"),
+  ).toBeVisible();
+});
+
 test("switches display mode between first and rank-up conditions", async ({ page }) => {
   const session = {
     id: "display-session",

@@ -270,7 +270,7 @@ describe("SessionRepository", () => {
     }
   });
 
-  it("lists the full player catalog and rejects duplicate identity names", () => {
+  it("lists the full player catalog and reuses an existing identity with the same name", () => {
     const repository = createRepository();
     try {
       repository.saveActiveSession(createSession("first"), 0);
@@ -299,10 +299,21 @@ describe("SessionRepository", () => {
           index === 0 ? { ...player, name: " Ａ " } : player,
         ),
       };
-      expect(() => repository.saveActiveSession(conflicting, 2)).toThrow(
+      const resolved = repository.saveActiveSession(conflicting, 2);
+      expect(resolved.session?.players[0]).toEqual({ id: "a", name: "A" });
+      expect(resolved.session?.hands[0]?.seats[0]?.playerId).toBe("a");
+      expect(repository.readEnvelope()).toEqual(resolved);
+
+      const duplicateRoster = {
+        ...resolved.session!,
+        players: resolved.session!.players.map((player, index) =>
+          index === 1 ? { ...player, name: "Ａ" } : player,
+        ),
+      };
+      expect(() => repository.saveActiveSession(duplicateRoster, 3)).toThrow(
         PlayerIdentityConflictError,
       );
-      expect(repository.readEnvelope().session).toEqual(second);
+      expect(repository.readEnvelope()).toEqual(resolved);
     } finally {
       repository.close();
     }

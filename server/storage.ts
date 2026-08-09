@@ -116,7 +116,7 @@ export class SessionRepository {
   }
 
   saveActiveSession(sessionValue: unknown, baseVersion: number): SessionEnvelope {
-    const session = parseSession(sessionValue);
+    const parsedSession = parseSession(sessionValue);
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const current = this.readEnvelope();
@@ -124,7 +124,7 @@ export class SessionRepository {
         throw new SessionConflictError(current);
       }
 
-      this.assertPlayerIdentityNames(session);
+      const session = this.resolvePlayerIdentities(parsedSession);
       const now = new Date().toISOString();
       const nextVersion = current.version + 1;
       if (current.session && current.session.id !== session.id) {
@@ -574,30 +574,49 @@ export class SessionRepository {
     });
   }
 
-  private assertPlayerIdentityNames(session: Session): void {
-    const ownerByName = new Map<string, string>();
+  private resolvePlayerIdentities(session: Session): Session {
+    const knownPlayerByName = new Map<string, Player>();
     for (const player of this.listAllPlayers()) {
       const normalizedName = normalizePlayerName(player.name);
-      const ownerId = ownerByName.get(normalizedName);
-      if (ownerId && ownerId !== player.id) {
+      const knownPlayer = knownPlayerByName.get(normalizedName);
+      if (knownPlayer && knownPlayer.id !== player.id) {
         throw new PlayerIdentityConflictError(player.name);
       }
-      ownerByName.set(normalizedName, player.id);
+      knownPlayerByName.set(normalizedName, player);
     }
 
-    const sessionOwnerByName = new Map<string, string>();
-    for (const player of session.players) {
+    const sessionPlayerByName = new Map<string, Player>();
+    const playerIdMap = new Map<string, string>();
+    const resolvedPlayers = session.players.map((player) => {
       const normalizedName = normalizePlayerName(player.name);
-      const sessionOwnerId = sessionOwnerByName.get(normalizedName);
-      if (sessionOwnerId && sessionOwnerId !== player.id) {
+      if (sessionPlayerByName.has(normalizedName)) {
         throw new PlayerIdentityConflictError(player.name);
       }
-      const knownOwnerId = ownerByName.get(normalizedName);
-      if (knownOwnerId && knownOwnerId !== player.id) {
+      sessionPlayerByName.set(normalizedName, player);
+      const resolvedPlayer = knownPlayerByName.get(normalizedName) ?? player;
+      playerIdMap.set(player.id, resolvedPlayer.id);
+      return resolvedPlayer;
+    });
+
+    const resolvedPlayerIds = new Set<string>();
+    for (const player of resolvedPlayers) {
+      if (resolvedPlayerIds.has(player.id)) {
         throw new PlayerIdentityConflictError(player.name);
       }
-      sessionOwnerByName.set(normalizedName, player.id);
+      resolvedPlayerIds.add(player.id);
     }
+
+    return {
+      ...session,
+      players: resolvedPlayers,
+      hands: session.hands.map((hand) => ({
+        ...hand,
+        seats: hand.seats.map((seat) => ({
+          ...seat,
+          playerId: playerIdMap.get(seat.playerId) ?? seat.playerId,
+        })),
+      })),
+    };
   }
 
   private assertSessionCanBeFinalized(session: Session): void {

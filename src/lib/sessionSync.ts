@@ -10,6 +10,25 @@ export class SessionSyncConflictError extends Error {
   }
 }
 
+const readErrorMessage = async (response: Response, fallback: string): Promise<string> => {
+  try {
+    const payload = (await response.json()) as unknown;
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      !Array.isArray(payload)
+    ) {
+      const message = (payload as Record<string, unknown>).error;
+      if (typeof message === "string") {
+        return message;
+      }
+    }
+  } catch {
+    // Fall back to a stable client-side message when the API did not return JSON.
+  }
+  return fallback;
+};
+
 export interface SessionSync {
   load(): Promise<Session | null>;
   save(session: Session, baseVersion: number): Promise<void>;
@@ -94,7 +113,7 @@ export class HttpPollingSessionSync implements SessionSync {
       }
     }
     if (!response.ok) {
-      throw new Error("Failed to save session");
+      throw new Error(await readErrorMessage(response, "Failed to save session"));
     }
     return parseSessionEnvelope(await response.json());
   }
