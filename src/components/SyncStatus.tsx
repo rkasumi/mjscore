@@ -8,7 +8,10 @@ type Props = {
   displayMode?: boolean;
   snapshotMode?: boolean;
   snapshotError?: string | null;
+  hasConflict?: boolean;
   onRetrySync?: () => void;
+  onAcceptRemoteConflict?: () => void;
+  onOverwriteRemoteConflict?: () => void;
 };
 
 export const SyncStatus = ({
@@ -18,7 +21,10 @@ export const SyncStatus = ({
   displayMode = false,
   snapshotMode = false,
   snapshotError = null,
+  hasConflict = false,
   onRetrySync,
+  onAcceptRemoteConflict,
+  onOverwriteRemoteConflict,
 }: Props) => {
   const formatTimestamp = (value: number): string =>
     value > 0 ? new Date(value).toLocaleString() : "-";
@@ -55,7 +61,29 @@ export const SyncStatus = ({
               {lastError ?? meta?.lastSyncError?.message ?? "Sync failed"}
             </span>
           ) : null}
-          {hasError && onRetrySync ? (
+          {hasConflict && onAcceptRemoteConflict && onOverwriteRemoteConflict ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200"
+                onClick={onAcceptRemoteConflict}
+              >
+                リモートを採用
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-200"
+                onClick={() => {
+                  if (window.confirm("他の端末の更新を、この端末の内容で上書きしますか？")) {
+                    onOverwriteRemoteConflict();
+                  }
+                }}
+              >
+                この端末で上書き
+              </button>
+            </div>
+          ) : null}
+          {hasError && !hasConflict && onRetrySync ? (
             <button
               type="button"
               className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-200"

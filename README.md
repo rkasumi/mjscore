@@ -10,10 +10,12 @@ It includes:
 - shareable read-only snapshots
 - a simple fu helper page
 - an optional Express API for session sync
+- SQLite-backed session history for the API
+- historical rankings, direct matchups, personal records, and saved seasons
 
 ## Requirements
 
-- Node.js 24
+- Node.js 24.18.x
 - pnpm 10.33.4
 
 Enable Corepack if pnpm is not already available:
@@ -42,6 +44,76 @@ Run the API server:
 pnpm dev:api
 ```
 
+The Vite development server proxies `/api` to `http://127.0.0.1:3000`, so the
+two commands above work together without additional CORS configuration.
+
+The API stores data in `${DATA_DIR:-/data}/mjscore.sqlite`. Writes use SQLite
+transactions and optimistic version checks. Starting a session with a new ID
+finalizes the previous active session instead of deleting it.
+
+### Migrating the legacy JSON store
+
+The API refuses to create a new database when a legacy `session.json` exists in
+the same data directory. Validate the migration first:
+
+```sh
+DATA_DIR=/path/to/data pnpm migrate:json
+```
+
+The dry run does not change files. Apply it only after confirming the output and
+backing up the data directory:
+
+```sh
+DATA_DIR=/path/to/data pnpm migrate:json -- --apply
+```
+
+For a built API image, run the equivalent compiled command:
+
+```sh
+node server/dist/server/migrate-json.js --apply
+```
+
+The migration is intentionally one-way and does not delete `session.json`.
+
+### Creating a SQLite-consistent backup
+
+Create an online backup while the API is running with:
+
+```sh
+DATA_DIR=/path/to/data pnpm backup:sqlite
+```
+
+By default this writes `backups/mjscore.sqlite` under `DATA_DIR`. The command
+backs up to a temporary file, runs `PRAGMA quick_check`, and atomically replaces
+the previous checked backup. The compiled production command is:
+
+```sh
+node server/dist/server/backup-sqlite.js \
+  --source /data/mjscore.sqlite \
+  --output /data/backups/mjscore.sqlite
+```
+
+Use this checked standalone file as the restic backup source instead of copying
+the live database, WAL, and SHM files independently.
+
+## Stored Results and Analytics
+
+Starting a new table finalizes the previous one. A table can also be finalized
+without starting another table, reopened from result history, or marked as
+excluded from analytics without deleting its data.
+
+The analytics view includes:
+
+- all-time and date-range rankings
+- monthly and saved-season rankings
+- total and average points, average rank, top rate, last rate, and rank counts
+- head-to-head results for players who shared a hand
+- highest/lowest score, best/worst hand points, and longest top streak
+
+Only finalized, non-voided tables are included in analytics. `/share/` remains
+an explicitly generated read-only snapshot and does not expose result-history
+listing APIs.
+
 Useful checks:
 
 ```sh
@@ -66,6 +138,15 @@ CORS_ORIGIN=http://localhost:5173
 ```
 
 Display mode is enabled when the query parameter includes `display=1`, `display=true`, or `display=display`.
+Its reverse-condition board shows all four players and tries overall ranks in
+two modes: overall-first conditions and one-rank-up conditions. The modes can
+be selected manually and alternate every 10 seconds. A scenario is treated as
+realistic when each required score gap is at most 30,000 points, the required
+own score is at most 60,000 points, and the score-gap requirement is consistent
+with the assumed finishing order. Among realistic scenarios, the board prefers
+the smallest required finishing-order difference, such as finishing above a
+rival or a top-third condition. When no realistic target exists, the board still
+shows the least demanding reference condition after rank-point bonuses.
 
 Optional SPA build-time settings:
 
@@ -91,6 +172,10 @@ When `config.json` is missing or invalid, the app uses `プレイヤー1` throug
 ## Self-hosting Example
 
 This repository keeps app code, local development, tests, build scripts, and a generic compose example. Deployment-specific scripts, public URLs, reverse proxy configuration, host ports, backups, and secret paths should live outside this repository.
+
+Back up the SQLite database with a SQLite-consistent snapshot mechanism. When
+WAL mode is active, copying only `mjscore.sqlite` while the API is running is not
+a complete backup.
 
 Build the SPA:
 

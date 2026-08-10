@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
-import type { Hand, HandSeat, Session } from "../shared/types";
+import { findPlayerByName, normalizePlayerName } from "../shared/playerIdentity";
+import type { Hand, HandSeat, Player, Session } from "../shared/types";
+import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
+import { DisplayInsights } from "./components/DisplayInsights";
 import { GraphPanel } from "./components/GraphPanel";
 import { HandForm } from "./components/HandForm";
 import { HandHistory } from "./components/HandHistory";
@@ -8,12 +11,14 @@ import { PlayerManager } from "./components/PlayerManager";
 import { ReverseCondition } from "./components/ReverseCondition";
 import { ScoreTable } from "./components/ScoreTable";
 import { SessionControls } from "./components/SessionControls";
+import { SessionHistory } from "./components/SessionHistory";
 import { SimpleFuPage } from "./components/SimpleFuPage";
 import { SnapshotShare } from "./components/SnapshotShare";
 import { SummaryPanel } from "./components/SummaryPanel";
 import { SyncStatus } from "./components/SyncStatus";
 import { buildSessionAggregate } from "./lib/aggregation";
 import { createId } from "./lib/id";
+import { fetchStoredPlayers, finalizeStoredSession } from "./lib/sessionHistory";
 import {
   decodeSnapshot,
   getSnapshotPathEncoded,
@@ -97,7 +102,7 @@ type SnapshotState = {
   error: string | null;
 };
 
-type ActivePanel = "controls" | "handInput" | "reverse" | "scoreTable";
+type ActivePanel = "analytics" | "controls" | "handInput" | "history" | "reverse" | "scoreTable";
 
 const getInitialPanel = (): ActivePanel | null => {
   if (window.location.hash === "#score-table" || window.location.hash === "#fu-table") {
@@ -132,6 +137,14 @@ const createSession = (playerNames: string[]): Session => ({
   hands: [],
 });
 
+const createSessionWithPlayers = (players: Player[]): Session => ({
+  id: createId(),
+  createdAt: new Date().toISOString(),
+  day: toJstDateString(new Date()),
+  players: players.map((player) => ({ ...player })),
+  hands: [],
+});
+
 const updateHand = (hands: Hand[], nextHand: Hand): Hand[] =>
   hands.map((hand) => (hand.id === nextHand.id ? nextHand : hand));
 
@@ -140,6 +153,12 @@ const removeHand = (hands: Hand[], handId: string): Hand[] =>
 
 const canRemovePlayer = (session: Session, playerId: string): boolean =>
   !session.hands.some((hand) => hand.seats.some((seat) => seat.playerId === playerId));
+
+const mergeKnownPlayers = (current: Player[], incoming: readonly Player[]): Player[] => {
+  const merged = new Map(current.map((player) => [player.id, player]));
+  incoming.forEach((player) => merged.set(player.id, player));
+  return [...merged.values()];
+};
 
 const parseSnapshotFromLocation = (): SnapshotState => {
   const pathEncoded = getSnapshotPathEncoded(window.location.pathname);
@@ -204,15 +223,21 @@ const ScoreApp = () => {
     syncState,
     lastError,
     meta,
-    lostChanges,
-    setLostChanges,
     retrySync,
+    conflictEnvelope,
+    acceptRemoteConflict,
+    overwriteRemoteConflict,
+    adoptEnvelope,
   } = useSessionStore({
     initialSession: snapshotMode ? snapshotSession : undefined,
     disableSync: snapshotMode,
     disablePersistence: snapshotMode,
   });
   const [editingHandId, setEditingHandId] = useState<string | null>(null);
+  const [storedPlayers, setStoredPlayers] = useState<Player[]>([]);
+  const [knownPlayers, setKnownPlayers] = useState<Player[]>([]);
+  const [storedPlayersLoaded, setStoredPlayersLoaded] = useState(false);
+  const [sessionLabelDraft, setSessionLabelDraft] = useState("");
   const [activePanel, setActivePanel] = useState<ActivePanel | null>(getInitialPanel);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -247,6 +272,28 @@ const ScoreApp = () => {
     const label = normalizedSession.label?.trim() ?? "";
     return { day, label };
   }, [normalizedSession]);
+  useEffect(() => {
+    setSessionLabelDraft(normalizedSession?.label ?? "");
+  }, [normalizedSession?.id, normalizedSession?.label]);
+  useEffect(() => {
+    if (normalizedSession) {
+      setStoredPlayers(normalizedSession.players);
+      setKnownPlayers((current) => mergeKnownPlayers(current, normalizedSession.players));
+      setStoredPlayersLoaded(true);
+    }
+  }, [normalizedSession]);
+  useEffect(() => {
+    if (snapshotMode) {
+      return;
+    }
+    void fetchStoredPlayers()
+      .then(({ players, knownPlayers: fetchedKnownPlayers }) => {
+        setStoredPlayers((current) => (current.length > 0 ? current : players));
+        setKnownPlayers((current) => mergeKnownPlayers(current, fetchedKnownPlayers));
+      })
+      .catch(() => undefined)
+      .finally(() => setStoredPlayersLoaded(true));
+  }, [snapshotMode]);
   const defaultSeatIds = useMemo(() => {
     if (!normalizedSession) {
       return [];
@@ -334,10 +381,14 @@ const ScoreApp = () => {
   }, [setSession, snapshotMode, snapshotSession]);
 
   const handleCreateSession = () => {
-    if (!appConfigLoaded) {
+    if (!appConfigLoaded || !storedPlayersLoaded) {
       return;
     }
-    saveSession(createSession(appConfig.defaultPlayerNames));
+    saveSession(
+      storedPlayers.length > 0
+        ? createSessionWithPlayers(storedPlayers)
+        : createSession(appConfig.defaultPlayerNames),
+    );
   };
 
   const handleResetHands = () => {
@@ -355,32 +406,81 @@ const ScoreApp = () => {
     setEditingHandId(null);
   };
 
-  const handleAddPlayer = (name: string) => {
+  const handleFinalizeSession = async () => {
+    if (!normalizedSession || meta?.version === undefined) return;
+    try {
+      adoptEnvelope(await finalizeStoredSession(normalizedSession.id, meta.version));
+      setActivePanel(null);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "卓の確定に失敗しました。");
+    }
+  };
+
+  const handleAddPlayer = (nameValue: string): boolean => {
     if (!normalizedSession || normalizedSession.players.length >= 6) {
-      return;
+      return false;
+    }
+    const name = nameValue.trim();
+    const knownPlayer = findPlayerByName(knownPlayers, name);
+    const player = knownPlayer ?? { id: createId(), name };
+    if (
+      normalizedSession.players.some(
+        (current) =>
+          current.id === player.id ||
+          normalizePlayerName(current.name) === normalizePlayerName(player.name),
+      )
+    ) {
+      return false;
     }
     const next = {
       ...normalizedSession,
-      players: [...normalizedSession.players, { id: createId(), name }],
+      players: [...normalizedSession.players, player],
     };
+    setKnownPlayers((current) => mergeKnownPlayers(current, [player]));
     saveSession(next);
+    return true;
   };
 
-  const handleRenamePlayer = (id: string, name: string) => {
+  const handleReplacePlayer = (id: string, nameValue: string): boolean => {
     if (!normalizedSession) {
-      return;
+      return false;
     }
     const playerIndex = normalizedSession.players.findIndex((player) => player.id === id);
     if (playerIndex >= 0 && playerIndex < appConfig.fixedPlayerCount) {
-      return;
+      return false;
+    }
+    if (!canRemovePlayer(normalizedSession, id)) {
+      return false;
+    }
+    const currentPlayer = normalizedSession.players[playerIndex];
+    if (!currentPlayer) {
+      return false;
+    }
+    const name = nameValue.trim();
+    if (normalizePlayerName(currentPlayer.name) === normalizePlayerName(name)) {
+      return true;
+    }
+    const knownPlayer = findPlayerByName(knownPlayers, name);
+    const replacement = knownPlayer ?? { id: createId(), name };
+    if (
+      normalizedSession.players.some(
+        (player) =>
+          player.id !== id &&
+          (player.id === replacement.id ||
+            normalizePlayerName(player.name) === normalizePlayerName(replacement.name)),
+      )
+    ) {
+      return false;
     }
     const next = {
       ...normalizedSession,
       players: normalizedSession.players.map((player) =>
-        player.id === id ? { ...player, name } : player,
+        player.id === id ? replacement : player,
       ),
     };
+    setKnownPlayers((current) => mergeKnownPlayers(current, [replacement]));
     saveSession(next);
+    return true;
   };
 
   const handleRemovePlayer = (id: string) => {
@@ -450,14 +550,6 @@ const ScoreApp = () => {
   const panelTitleId = activePanel ? `panel-title-${activePanel}` : "panel-title";
 
   useEffect(() => {
-    if (!lostChanges) {
-      return;
-    }
-    const timer = window.setTimeout(() => setLostChanges(false), 4000);
-    return () => window.clearTimeout(timer);
-  }, [lostChanges, setLostChanges]);
-
-  useEffect(() => {
     if (!activePanel) {
       if (lastTriggerRef.current) {
         lastTriggerRef.current.focus();
@@ -466,9 +558,11 @@ const ScoreApp = () => {
     }
     const focusableSelector =
       'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-    const focusable = modalRef.current
-      ? Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusableSelector))
-      : [];
+    const getFocusable = (): HTMLElement[] =>
+      modalRef.current
+        ? Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+        : [];
+    const focusable = getFocusable();
     const first = closeButtonRef.current ?? focusable[0] ?? null;
     first?.focus();
 
@@ -478,12 +572,13 @@ const ScoreApp = () => {
         setActivePanel(null);
         return;
       }
-      if (event.key !== "Tab" || focusable.length === 0) {
+      const currentFocusable = getFocusable();
+      if (event.key !== "Tab" || currentFocusable.length === 0) {
         return;
       }
       const current = document.activeElement as HTMLElement | null;
-      const firstEl = focusable[0];
-      const lastEl = focusable[focusable.length - 1];
+      const firstEl = currentFocusable[0];
+      const lastEl = currentFocusable[currentFocusable.length - 1];
       if (!firstEl || !lastEl) {
         return;
       }
@@ -535,13 +630,11 @@ const ScoreApp = () => {
             displayMode={displayMode}
             snapshotMode={snapshotMode}
             snapshotError={snapshotError}
+            hasConflict={Boolean(conflictEnvelope)}
             onRetrySync={retrySync}
+            onAcceptRemoteConflict={acceptRemoteConflict}
+            onOverwriteRemoteConflict={overwriteRemoteConflict}
           />
-          {lostChanges ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">
-              未送信の変更がリモート同期により上書きされました。
-            </div>
-          ) : null}
         </header>
         {displayMode ? (
           <div className="pointer-events-none fixed right-4 top-4 z-40">
@@ -587,6 +680,10 @@ const ScoreApp = () => {
                 hideTrendColumns={snapshotMode}
               />
             </div>
+
+            {displayMode && normalizedSession ? (
+              <DisplayInsights session={normalizedSession} seatPlayerIds={seatPlayerIds} />
+            ) : null}
 
             {!displayMode ? (
               normalizedSession ? (
@@ -645,6 +742,28 @@ const ScoreApp = () => {
                 >
                   点数表
                 </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "history"
+                      ? "bg-sky-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={handleTogglePanel("history")}
+                >
+                  結果履歴
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    activePanel === "analytics"
+                      ? "bg-violet-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  onClick={handleTogglePanel("analytics")}
+                >
+                  成績分析
+                </button>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <button
@@ -684,11 +803,15 @@ const ScoreApp = () => {
                       <h3 id={panelTitleId} className="font-display text-lg text-slate-900">
                         {activePanel === "controls"
                           ? "卓管理"
-                          : activePanel === "handInput"
-                            ? "半荘入力"
-                            : activePanel === "scoreTable"
-                              ? "点数表"
-                              : "逆転条件"}
+                          : activePanel === "analytics"
+                            ? "成績分析"
+                            : activePanel === "handInput"
+                              ? "半荘入力"
+                              : activePanel === "history"
+                                ? "結果履歴"
+                                : activePanel === "scoreTable"
+                                  ? "点数表"
+                                  : "逆転条件"}
                       </h3>
                       <button
                         type="button"
@@ -706,10 +829,11 @@ const ScoreApp = () => {
                         {normalizedSession ? (
                           <PlayerManager
                             players={normalizedSession.players}
+                            knownPlayers={knownPlayers}
                             hands={normalizedSession.hands}
                             fixedPlayerCount={appConfig.fixedPlayerCount}
                             onAdd={handleAddPlayer}
-                            onRename={handleRenamePlayer}
+                            onReplace={handleReplacePlayer}
                             onRemove={handleRemovePlayer}
                           />
                         ) : (
@@ -719,8 +843,10 @@ const ScoreApp = () => {
                         )}
                         <SessionControls
                           hasSession={Boolean(normalizedSession)}
-                          createDisabled={!appConfigLoaded}
+                          canFinalize={Boolean(normalizedSession?.hands.length)}
+                          createDisabled={!appConfigLoaded || !storedPlayersLoaded}
                           onCreate={handleCreateSession}
+                          onFinalize={() => void handleFinalizeSession()}
                           onResetHands={handleResetHands}
                         />
                         {normalizedSession ? (
@@ -746,12 +872,15 @@ const ScoreApp = () => {
                                   type="text"
                                   placeholder="例: 夜 / 自宅 / 第2部"
                                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base text-slate-700"
-                                  value={sessionInfo?.label ?? ""}
-                                  onChange={(event) =>
-                                    handleUpdateSessionInfo({
-                                      label: event.target.value || undefined,
-                                    })
-                                  }
+                                  value={sessionLabelDraft}
+                                  onChange={(event) => setSessionLabelDraft(event.target.value)}
+                                  onBlur={() => {
+                                    const label = sessionLabelDraft.trim();
+                                    setSessionLabelDraft(label);
+                                    if (label !== (normalizedSession.label ?? "")) {
+                                      handleUpdateSessionInfo({ label: label || undefined });
+                                    }
+                                  }}
                                 />
                               </label>
                             </div>
@@ -794,6 +923,15 @@ const ScoreApp = () => {
                         initialMode={window.location.hash === "#fu-table" ? "fu" : "child"}
                       />
                     ) : null}
+                    {activePanel === "history" ? (
+                      <SessionHistory
+                        currentSessionId={normalizedSession?.id ?? null}
+                        currentVersion={meta?.version ?? null}
+                        onEnvelope={adoptEnvelope}
+                        onReopened={() => setActivePanel(null)}
+                      />
+                    ) : null}
+                    {activePanel === "analytics" ? <AnalyticsDashboard /> : null}
                   </div>
                 </div>
               </div>

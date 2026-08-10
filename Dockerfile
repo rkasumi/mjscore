@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:24.18.0-alpine3.24 AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY server/tsconfig.json ./server/tsconfig.json
 
 RUN pnpm build:api
 
-FROM node:24-alpine AS runtime
+FROM node:24.18.0-alpine3.24 AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production

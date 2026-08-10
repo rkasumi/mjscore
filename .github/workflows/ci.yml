@@ -11,10 +11,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "24.18.0"
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm -s lint
       - run: pnpm -s test
       - run: pnpm -s typecheck
       - run: pnpm -s build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm -s test:e2e

@@ -1,14 +1,37 @@
-import type { Session } from "../../shared/types";
+import type { Session, SessionEnvelope } from "../../shared/types";
+import { parseSessionEnvelope } from "../../shared/sessionValidation";
 
-export type SessionEnvelope = {
-  version: number;
-  updatedAt: string;
-  session: Session | null;
+export type { SessionEnvelope } from "../../shared/types";
+
+export class SessionSyncConflictError extends Error {
+  constructor(readonly current: SessionEnvelope) {
+    super("Session version conflict");
+    this.name = "SessionSyncConflictError";
+  }
+}
+
+const readErrorMessage = async (response: Response, fallback: string): Promise<string> => {
+  try {
+    const payload = (await response.json()) as unknown;
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      !Array.isArray(payload)
+    ) {
+      const message = (payload as Record<string, unknown>).error;
+      if (typeof message === "string") {
+        return message;
+      }
+    }
+  } catch {
+    // Fall back to a stable client-side message when the API did not return JSON.
+  }
+  return fallback;
 };
 
 export interface SessionSync {
   load(): Promise<Session | null>;
-  save(session: Session): Promise<void>;
+  save(session: Session, baseVersion: number): Promise<void>;
 }
 
 export class HttpPollingSessionSync implements SessionSync {
@@ -34,8 +57,8 @@ export class HttpPollingSessionSync implements SessionSync {
     return envelope.session;
   }
 
-  async save(session: Session): Promise<void> {
-    const envelope = await this.postSession(session);
+  async save(session: Session, baseVersion: number): Promise<void> {
+    const envelope = await this.postSession(session, baseVersion);
     this.lastEnvelope = envelope;
   }
 
@@ -72,20 +95,26 @@ export class HttpPollingSessionSync implements SessionSync {
     if (!response.ok) {
       throw new Error("Failed to load session");
     }
-    return (await response.json()) as SessionEnvelope;
+    return parseSessionEnvelope(await response.json());
   }
 
-  private async postSession(session: Session): Promise<SessionEnvelope> {
+  private async postSession(session: Session, baseVersion: number): Promise<SessionEnvelope> {
     const response = await this.fetchImpl(`${this.baseUrl}/session`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ session }),
+      body: JSON.stringify({ baseVersion, session }),
     });
-    if (!response.ok) {
-      throw new Error("Failed to save session");
+    if (response.status === 409) {
+      const payload = (await response.json()) as { current?: unknown };
+      if (payload.current) {
+        throw new SessionSyncConflictError(parseSessionEnvelope(payload.current));
+      }
     }
-    return (await response.json()) as SessionEnvelope;
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "Failed to save session"));
+    }
+    return parseSessionEnvelope(await response.json());
   }
 }
