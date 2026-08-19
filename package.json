@@ -44,7 +44,7 @@
     "postcss": "^8.5.23",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-is": "^19.2.7",
+    "react-is": "^19.2.8",
     "react-number-format": "^5.4.5",
     "recharts": "^3.8.1",
     "tailwindcss": "^3.4.15",
