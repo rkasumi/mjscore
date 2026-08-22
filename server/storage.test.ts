@@ -319,6 +319,37 @@ describe("SessionRepository", () => {
     }
   });
 
+  it("keeps saving when the historical player catalog already contains duplicate names", () => {
+    const repository = createRepository();
+    try {
+      const first = repository.saveActiveSession(createSession(), 0);
+      const database = new DatabaseSync(repository.databasePath);
+      try {
+        database
+          .prepare(
+            `INSERT INTO players(id, current_name, created_at, updated_at)
+             VALUES (?, ?, ?, ?)`,
+          )
+          .run(
+            "duplicate-a",
+            " Ａ ",
+            "2026-07-13T02:00:00.000Z",
+            "2026-07-13T02:00:00.000Z",
+          );
+      } finally {
+        database.close();
+      }
+
+      const saved = repository.saveActiveSession(first.session, 1);
+
+      expect(saved.session?.players[0]).toEqual({ id: "a", name: "A" });
+      expect(saved.session?.hands[0]?.seats[0]?.playerId).toBe("a");
+      expect(repository.listAllPlayers()).toHaveLength(5);
+    } finally {
+      repository.close();
+    }
+  });
+
   it("creates a checked standalone backup while the WAL database is open", async () => {
     const repository = createRepository();
     const backupPath = path.join(

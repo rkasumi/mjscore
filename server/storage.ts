@@ -575,14 +575,16 @@ export class SessionRepository {
   }
 
   private resolvePlayerIdentities(session: Session): Session {
+    const knownPlayers = this.listAllPlayers();
+    const knownPlayerById = new Map(knownPlayers.map((player) => [player.id, player]));
     const knownPlayerByName = new Map<string, Player>();
-    for (const player of this.listAllPlayers()) {
+    for (const player of knownPlayers) {
       const normalizedName = normalizePlayerName(player.name);
-      const knownPlayer = knownPlayerByName.get(normalizedName);
-      if (knownPlayer && knownPlayer.id !== player.id) {
-        throw new PlayerIdentityConflictError(player.name);
+      // Older catalogs can contain duplicate normalized names. Keep a stable fallback,
+      // then prefer the session's exact identity below when it is still valid.
+      if (!knownPlayerByName.has(normalizedName)) {
+        knownPlayerByName.set(normalizedName, player);
       }
-      knownPlayerByName.set(normalizedName, player);
     }
 
     const sessionPlayerByName = new Map<string, Player>();
@@ -593,7 +595,12 @@ export class SessionRepository {
         throw new PlayerIdentityConflictError(player.name);
       }
       sessionPlayerByName.set(normalizedName, player);
-      const resolvedPlayer = knownPlayerByName.get(normalizedName) ?? player;
+      const knownPlayerWithSameId = knownPlayerById.get(player.id);
+      const resolvedPlayer =
+        knownPlayerWithSameId &&
+        normalizePlayerName(knownPlayerWithSameId.name) === normalizedName
+          ? knownPlayerWithSameId
+          : (knownPlayerByName.get(normalizedName) ?? player);
       playerIdMap.set(player.id, resolvedPlayer.id);
       return resolvedPlayer;
     });
