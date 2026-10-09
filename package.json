@@ -2,7 +2,7 @@
   "name": "mjscore",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@10.33.4",
+  "packageManager": "pnpm@10.34.6",
   "engines": {
     "node": "24.18.x"
   },
@@ -67,13 +67,18 @@
     "overrides": {
       "@babel/core@7.29.0": "7.29.6",
       "body-parser@2.2.2": "2.3.0",
-      "brace-expansion@1.1.12": "1.1.18",
-      "brace-expansion@5.0.6": "5.0.9",
       "esbuild@0.28.0": "0.28.2",
       "flatted@3.3.3": "3.4.2",
-      "js-yaml@4.1.1": "4.3.1",
       "minimatch@3.1.2": "3.1.4",
-      "qs@6.15.1": "6.15.3"
+      "proxy-addr@2": "2.0.8",
+      "qs@6": "6.16.0",
+      "source-map-js@1": "1.2.2",
+      "brace-expansion@1": "1.1.21",
+      "brace-expansion@5": "5.0.12",
+      "js-yaml@4": "4.3.2",
+      "browserslist@4": "4.28.7",
+      "baseline-browser-mapping@2": "2.11.0",
+      "postcss-selector-parser@6": "7.1.6"
     }
   }
 }
