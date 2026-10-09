@@ -18,6 +18,10 @@ It includes:
 - Node.js 24.18.x
 - pnpm 10.34.6
 
+Select Node.js 24.18.0 (recorded in `.node-version`) with your version manager before installing dependencies or running checks. CI and both Docker stages use this version; an older local Node.js does not satisfy `engines.node`.
+
+Keep `@types/node` on major 24 to match the runtime. Dependabot continues minor and patch updates within that major; a Node type major upgrade requires a coordinated runtime upgrade and validation of the API, including SQLite support.
+
 Enable Corepack if pnpm is not already available:
 
 ```sh
