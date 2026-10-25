@@ -51,8 +51,8 @@
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.60.0",
-    "vite": "^8.2.1",
-    "vitest": "^4.1.11"
+    "vite": "^8.2.4",
+    "vitest": "^4.1.12"
   },
   "dependencyNotes": {
     "recharts": "Charts for point trends",
@@ -66,19 +66,20 @@
   "pnpm": {
     "overrides": {
       "@babel/core@7.29.0": "7.29.6",
-      "body-parser@2.2.2": "2.3.0",
+      "body-parser@2": "2.4.0",
       "esbuild@0.28.0": "0.28.2",
       "flatted@3.3.3": "3.4.2",
       "minimatch@3.1.2": "3.1.4",
       "proxy-addr@2": "2.0.8",
-      "qs@6": "6.16.0",
+      "qs@6": "6.16.1",
       "source-map-js@1": "1.2.2",
       "brace-expansion@1": "1.1.21",
       "brace-expansion@5": "5.0.12",
       "js-yaml@4": "4.3.2",
       "browserslist@4": "4.28.7",
       "baseline-browser-mapping@2": "2.11.0",
-      "postcss-selector-parser@6": "7.1.6"
+      "postcss-selector-parser@6": "7.1.6",
+      "zod@4": "4.6.6"
     }
   }
 }

@@ -226,3 +226,7 @@ MIT License. See [LICENSE](./LICENSE).
 Tailwind CSS 3 のファイル監視依存に含まれる `braces` 3.0.3 の [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) は、実際には悪用可能な脆弱性ではないとして2026-10-23に撤回されました。このAdvisoryのための依存更新やTailwind 4移行は不要です。開発・ビルドでは引き続きリポジトリで管理する固定の `content` パスだけを使用し、外部入力を glob として渡さないでください。本番配信物にこの監視処理は含まれません。
 
 `postcss-selector-parser` は Tailwind CSS 3 を維持したまま、脆弱性修正済みの 7.1.6 に override しています。Tailwind 更新時は override の必要性と CSS 生成の互換性を再確認してください。
+
+APIが使う `body-parser` 2系は、圧縮本文に続く余分なデータによるプロセス停止 [GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828) を修正した2.4.0に override しています。APIのリクエスト本文テストでは、一時DBとAPIプロセスを使い、圧縮入力後の生存、通常の保存、version競合、不正入力と容量制限を確認します。
+
+ESLint経由の `zod` 4系は、過大なコレクション検証によるメモリ消費 [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) を修正した4.6.6に override しています。これらのoverrideは、親依存の更新時に修正済みversionが維持されることを確認してから見直してください。
