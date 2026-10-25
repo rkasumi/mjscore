@@ -221,8 +221,8 @@ This repository is intended to be safe as source code. Keep deployment-specific 
 
 MIT License. See [LICENSE](./LICENSE).
 
-## 開発用依存の脆弱性
+## 開発用依存の保守
 
-Tailwind CSS 3 のファイル監視依存に含まれる `braces` 3.0.3 は、深くネストした glob によるプロセス停止の脆弱性 [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) の修正版が未公開です。開発・ビルドではリポジトリで管理する固定の `content` パスだけを使用し、外部入力を glob として渡さないでください。本番配信物にこの監視処理は含まれません。修正版公開時に更新し、通知は解消まで保持します。
+Tailwind CSS 3 のファイル監視依存に含まれる `braces` 3.0.3 の [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) は、実際には悪用可能な脆弱性ではないとして2026-10-23に撤回されました。このAdvisoryのための依存更新やTailwind 4移行は不要です。開発・ビルドでは引き続きリポジトリで管理する固定の `content` パスだけを使用し、外部入力を glob として渡さないでください。本番配信物にこの監視処理は含まれません。
 
 `postcss-selector-parser` は Tailwind CSS 3 を維持したまま、脆弱性修正済みの 7.1.6 に override しています。Tailwind 更新時は override の必要性と CSS 生成の互換性を再確認してください。
